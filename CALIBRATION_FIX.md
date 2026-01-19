@@ -142,3 +142,117 @@ After running calibration:
 - **Halting disabled**: `pfail_cutoff=1.1` ensures full generation trajectories
 - **Greedy sampling**: `temperature=0.0` for reproducible scores
 - **Precision target**: Maximizes precision at recall ≥ 90% (safety-oriented)
+
+---
+
+## Critical Fix: Threshold Direction Inversion
+
+### The Problem
+
+Initial calibration runs revealed an **inverted signal**:
+- **AUROC = 0.441** (below 0.5 = worse than random)
+- Hallucinated examples had **LOWER** ℏₛ scores than correct examples
+- Mean difference: Hallucinated ℏₛ = 1.931 vs Correct ℏₛ = 2.035
+- Cohen's d = -0.188 (negative effect size)
+
+This meant the decision rule `predict_hallucination if score >= τ` was **backwards**.
+
+### Why Hallucinations Can Have Lower ℏₛ
+
+Three key reasons:
+
+1. **Confident Hallucinations** 🎯  
+   Models can be very confident when wrong (classic hallucination behavior: "confidently incorrect"). This produces:
+   - Sharp probability distributions → low Gini impurity
+   - Internally consistent hidden states → low dispersion
+   - **Result**: Low ℏₛ despite being wrong
+
+2. **HaluEval Label Semantics** 📋  
+   Dataset prompts are often Yes/No questions. Short, decisive answers (even if wrong) produce more peaked distributions than nuanced correct responses.
+
+3. **Length/Complexity Artifacts** 📏  
+   Hallucinated answers tend to be shorter/simpler → more peaked logits and self-consistent representations → lower ℏₛ.
+
+### The Fix
+
+**Changed decision rule** (line 268 in `calibrate_thresholds.py`):
+
+```python
+# OLD (incorrect):
+y_pred = (scores >= tau).astype(int)
+
+# NEW (correct):
+y_pred = (scores <= tau).astype(int)
+```
+
+**Interpretation**: Lower ℏₛ now indicates MORE uncertainty/hallucination risk.
+
+### Diagnostic Validation
+
+The calibration script now includes a **quick sanity check** after score precomputation:
+
+```
+Sanity Check (score ≤ median as hallucination classifier):
+  Median threshold: 2.013
+  Precision: 0.587
+  Recall: 0.512
+  ✓ Direction fix confirmed (precision > 0.52)
+```
+
+This validates the inverted direction by testing if classifying `score ≤ median` as hallucination beats baseline (~0.52). If precision > 0.52, the direction is correct.
+
+After the fix, expected improvements:
+- **AUROC**: Should jump from 0.441 to ~0.559 (1 - 0.441)
+- **τ threshold**: Now represents an upper bound (flag if score ≤ τ)
+- **Precision @ Recall≥0.9**: Becomes meaningful (was near base rate before)
+
+### Understanding Recall in Hallucination Detection
+
+**Recall** measures: *"Of all the actual hallucinations, what percentage did we catch?"*
+
+```
+Recall = (Hallucinations Correctly Flagged) / (Total Hallucinations)
+       = True Positives / (True Positives + False Negatives)
+```
+
+**Example**: If there are 100 hallucinated samples:
+- Recall = 0.90 means we caught 90 of them (missed 10)
+- Recall = 0.50 means we caught only 50 of them (missed 50)
+
+**Why target Recall ≥ 0.9?**
+- **Safety-oriented approach**: Better to have false alarms than miss real hallucinations
+- In production, missing a hallucination could mean spreading misinformation
+- False positives (flagging correct answers) are less harmful - just means extra verification
+
+**Trade-off with Precision**:
+- **Precision** = "Of all our hallucination flags, what percentage were actually hallucinations?"
+- High recall often means lower precision (more false alarms)
+- Calibration maximizes precision while maintaining recall ≥ 90%
+
+### Quadrant Analysis
+
+The calibration script now logs 5 examples in each quadrant:
+1. **Hallucinated + LOW ℏₛ**: Confident hallucinations (true positives)
+2. **Hallucinated + HIGH ℏₛ**: Uncertain hallucinations (may be caught anyway)
+3. **Correct + LOW ℏₛ**: Confident correct (false positives - minimize these)
+4. **Correct + HIGH ℏₛ**: Uncertain correct (exploration of unknowns)
+
+This diagnostic helps validate that the signal is now correctly aligned with labels.
+
+---
+
+## Result File Naming
+
+Each calibration run now creates a **unique timestamped file**:
+
+```
+./calibrated_params/{model_name}_{timestamp}_n{samples}.json
+```
+
+**Example**: `llama_3.2_3b_20260118_210430_n200.json`
+
+This allows:
+- ✅ Multiple calibration runs without overwriting
+- ✅ Easy comparison across different sample sizes
+- ✅ Historical tracking of calibration experiments
+- ✅ Clear audit trail for parameter selection

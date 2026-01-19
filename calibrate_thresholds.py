@@ -120,6 +120,21 @@ class ThresholdCalibrator:
             print(f"  Score range: [{scores.min():.3f}, {scores.max():.3f}]")
             print(f"  Hallucination rate: {labels.mean():.2%}")
             print()
+            
+            # Sanity check: Test median threshold with inverted direction
+            median_threshold = np.median(scores)
+            y_pred_median = (scores <= median_threshold).astype(int)
+            precision_median = precision_score(labels, y_pred_median, zero_division=0)
+            recall_median = recall_score(labels, y_pred_median, zero_division=0)
+            print("Sanity Check (score ≤ median as hallucination classifier):")
+            print(f"  Median threshold: {median_threshold:.3f}")
+            print(f"  Precision: {precision_median:.3f}")
+            print(f"  Recall: {recall_median:.3f}")
+            if precision_median > 0.52:
+                print(f"  ✓ Direction fix confirmed (precision > 0.52)")
+            else:
+                print(f"  ⚠ Direction may need review (precision ≤ 0.52)")
+            print()
         
         return scores, labels
     
@@ -169,11 +184,57 @@ class ThresholdCalibrator:
             cohens_d = (hal_scores.mean() - cor_scores.mean()) / pooled_std if pooled_std > 0 else 0.0
             print(f"  Effect size (Cohen's d): {cohens_d:.3f}")
             print()
+            
+            # Quadrant logging: Inspect extreme examples
+            print("Quadrant Analysis (5 examples each):")
+            print()
+            
+            # Get indices for each quadrant
+            hal_idx = np.where(labels == 1)[0]
+            cor_idx = np.where(labels == 0)[0]
+            
+            # Sort by score
+            hal_sorted = hal_idx[np.argsort(scores[hal_idx])]
+            cor_sorted = cor_idx[np.argsort(scores[cor_idx])]
+            
+            # Hallucinated with lowest scores (most confident hallucinations)
+            print("1. Hallucinated with LOWEST ℏₛ (confident hallucinations):")
+            for idx in hal_sorted[:5]:
+                sample = self.train_data[idx]
+                print(f"   ID: {sample['id']}, score={scores[idx]:.3f}")
+                print(f"   Prompt: {sample['prompt'][:150]}...")
+                print()
+            
+            # Hallucinated with highest scores (uncertain hallucinations)
+            print("2. Hallucinated with HIGHEST ℏₛ (uncertain hallucinations):")
+            for idx in hal_sorted[-5:]:
+                sample = self.train_data[idx]
+                print(f"   ID: {sample['id']}, score={scores[idx]:.3f}")
+                print(f"   Prompt: {sample['prompt'][:150]}...")
+                print()
+            
+            # Correct with lowest scores (confident correct)
+            print("3. Correct with LOWEST ℏₛ (confident correct):")
+            for idx in cor_sorted[:5]:
+                sample = self.train_data[idx]
+                print(f"   ID: {sample['id']}, score={scores[idx]:.3f}")
+                print(f"   Prompt: {sample['prompt'][:150]}...")
+                print()
+            
+            # Correct with highest scores (uncertain correct)
+            print("4. Correct with HIGHEST ℏₛ (uncertain correct):")
+            for idx in cor_sorted[-5:]:
+                sample = self.train_data[idx]
+                print(f"   ID: {sample['id']}, score={scores[idx]:.3f}")
+                print(f"   Prompt: {sample['prompt'][:150]}...")
+                print()
         
         # Pass 2: Sweep τ over precomputed scores (cheap)
         if tau_range is None:
             # Data-driven: use quantiles of score distribution (FULL range)
             tau_values = np.quantile(scores, np.linspace(0.01, 0.99, 99))
+            # Ensure ascending order for monotonic recall increase (easier debugging)
+            tau_values = np.sort(tau_values)
             if verbose:
                 print("Pass 2: Using data-driven τ sweep (quantile-based, full range)")
                 print(f"  τ range: [{tau_values.min():.3f}, {tau_values.max():.3f}]")
@@ -181,6 +242,8 @@ class ThresholdCalibrator:
         else:
             tau_start, tau_stop, tau_step = tau_range
             tau_values = np.arange(tau_start, tau_stop + tau_step, tau_step)
+            # Ensure ascending order for monotonic recall increase (easier debugging)
+            tau_values = np.sort(tau_values)
             if verbose:
                 print("Pass 2: Using specified τ sweep")
                 print(f"  τ range: [{tau_start}, {tau_stop}] step {tau_step}")
@@ -216,8 +279,10 @@ class ThresholdCalibrator:
             print()
         
         for tau in tau_values:
-            # Threshold predictions
-            y_pred = (scores >= tau).astype(int)
+            # Hallucination = 1 when uncertainty score is LOW (confident hallucination)
+            # INVERTED: Lower scores indicate MORE uncertainty/hallucination
+            # (Hallucinations can be "confidently wrong" → sharper distributions → lower ℏₛ)
+            y_pred = (scores <= tau).astype(int)
             
             # Compute threshold-dependent metrics
             try:
@@ -393,8 +458,11 @@ if __name__ == "__main__":
         verbose=True
     )
     
-    # Save results
-    output_path = os.path.join(args.output_dir, f"{args.model_name}.json")
+    # Save results with timestamp for unique files per run
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_filename = f"{args.model_name}_{timestamp}_n{args.n_samples}.json"
+    output_path = os.path.join(args.output_dir, output_filename)
     calibrator.save_params(result, output_path)
     
     print()
