@@ -78,7 +78,8 @@ class HallucinationMonitor:
     def generate_with_monitoring(
         self,
         prompt: str,
-        verbose: bool = False
+        verbose: bool = False,
+        compute_score_only: bool = False
     ) -> dict:
         """
         Main generation loop with uncertainty monitoring.
@@ -86,15 +87,22 @@ class HallucinationMonitor:
         Args:
             prompt: Input text prompt
             verbose: If True, print detailed metrics during generation
+            compute_score_only: If True, only compute and return aggregated ℏₛ score
+                               (lightweight mode for calibration)
             
         Returns:
             Dict with keys:
-                - tokens: List[int] - Generated token IDs
-                - text: str - Decoded text
-                - halted: bool - Whether generation was halted by P_fail
-                - halt_reason: str - Reason for stopping
-                - halt_step: Optional[int] - Token step where halting occurred
-                - trajectory: List[dict] - Metrics at each checked step
+                - If compute_score_only=True:
+                    - score: float - Mean of top-k ℏₛ values
+                    - halted: bool - Always False in score-only mode
+                    - halt_reason: str - Reason for stopping
+                - If compute_score_only=False:
+                    - tokens: List[int] - Generated token IDs
+                    - text: str - Decoded text
+                    - halted: bool - Whether generation was halted by P_fail
+                    - halt_reason: str - Reason for stopping
+                    - halt_step: Optional[int] - Token step where halting occurred
+                    - trajectory: List[dict] - Metrics at each checked step
         """
         # Tokenize prompt
         input_ids = self.tokenizer.encode(prompt)
@@ -103,10 +111,16 @@ class HallucinationMonitor:
         
         # Initialize generation state
         generated_tokens = []
-        trajectory = []
         halted = False
         halt_reason = ""
         halt_step = None
+        
+        # Lightweight accumulator for calibration vs full trajectory for monitoring
+        if compute_score_only:
+            top_hbar_s = []  # Keep top-k ℏₛ values
+            k_top = 5
+        else:
+            trajectory = []
         
         # Get EOS token ID
         eos_token_id = self.tokenizer.eos_token_id if hasattr(self.tokenizer, 'eos_token_id') else None
@@ -135,7 +149,10 @@ class HallucinationMonitor:
                 next_token = mx.random.categorical(probs).item()
             
             # Compute uncertainty metrics BEFORE accepting token (at specified frequency)
-            if (step + 1) % self.check_every_k_tokens == 0:
+            # For calibration (compute_score_only), force check_every_k_tokens=1
+            check_frequency = 1 if compute_score_only else self.check_every_k_tokens
+            
+            if (step + 1) % check_frequency == 0:
                 # Get probability distribution
                 probs = mx.softmax(logits, axis=-1)
                 
@@ -151,24 +168,30 @@ class HallucinationMonitor:
                     epsilon=DEFAULT_EPSILON
                 )
                 
-                # Add step information
-                metrics["step"] = step
-                trajectory.append(metrics)
-                
-                if verbose:
-                    print(f"Step {step}: P_fail={metrics['pfail']:.4f}, ℏₛ={metrics['hbar_s']:.4f}, "
-                          f"Δμ={metrics['delta_mu']:.4f}, Δσ={metrics['delta_sigma']:.4f}")
-                
-                # Check halting condition BEFORE appending risky token
-                should_halt, reason = self._should_halt(metrics["pfail"], step)
-                if should_halt:
-                    halted = True
-                    halt_reason = reason
-                    halt_step = step
+                if compute_score_only:
+                    # Lightweight: accumulate only ℏₛ (keep top-k)
+                    top_hbar_s.append(float(metrics['hbar_s']))
+                    top_hbar_s.sort()
+                    top_hbar_s = top_hbar_s[-k_top:]  # Keep only top-k
+                else:
+                    # Full monitoring: build trajectory
+                    metrics["step"] = step
+                    trajectory.append(metrics)
+                    
                     if verbose:
-                        print(f"HALTED at step {step}: {reason}")
-                        print(f"  Risky token ({next_token}) NOT appended to output")
-                    break
+                        print(f"Step {step}: P_fail={metrics['pfail']:.4f}, ℏₛ={metrics['hbar_s']:.4f}, "
+                              f"Δμ={metrics['delta_mu']:.4f}, Δσ={metrics['delta_sigma']:.4f}")
+                    
+                    # Check halting condition BEFORE appending risky token
+                    should_halt, reason = self._should_halt(metrics["pfail"], step)
+                    if should_halt:
+                        halted = True
+                        halt_reason = reason
+                        halt_step = step
+                        if verbose:
+                            print(f"HALTED at step {step}: {reason}")
+                            print(f"  Risky token ({next_token}) NOT appended to output")
+                        break
             
             # Only append token if we didn't halt
             generated_tokens.append(next_token)
@@ -186,26 +209,35 @@ class HallucinationMonitor:
         if not halted and not halt_reason:
             halt_reason = "max_tokens reached"
         
-        # Decode generated text
-        if generated_tokens:
-            generated_text = self.tokenizer.decode(generated_tokens)
-        else:
-            generated_text = ""
-        
         if verbose:
             print("-" * 80)
             print(f"Generation complete: {len(generated_tokens)} tokens")
             print(f"Final reason: {halt_reason}")
         
-        return {
-            "tokens": generated_tokens,
-            "text": generated_text,
-            "halted": halted,
-            "halt_reason": halt_reason,
-            "halt_step": halt_step,
-            "trajectory": trajectory,
-            "prompt": prompt
-        }
+        # Return lightweight score for calibration or full result for monitoring
+        if compute_score_only:
+            score = sum(top_hbar_s) / len(top_hbar_s) if top_hbar_s else 0.0
+            return {
+                "score": float(score),
+                "halted": halted,  # Should be False when pfail_cutoff > 1.0
+                "halt_reason": halt_reason
+            }
+        else:
+            # Decode generated text
+            if generated_tokens:
+                generated_text = self.tokenizer.decode(generated_tokens)
+            else:
+                generated_text = ""
+            
+            return {
+                "tokens": generated_tokens,
+                "text": generated_text,
+                "halted": halted,
+                "halt_reason": halt_reason,
+                "halt_step": halt_step,
+                "trajectory": trajectory,
+                "prompt": prompt
+            }
     
     def _should_halt(self, pfail: float, step: int) -> Tuple[bool, str]:
         """
