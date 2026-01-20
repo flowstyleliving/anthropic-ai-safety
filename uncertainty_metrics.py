@@ -132,6 +132,94 @@ def compute_pfail(hbar_s: float, tau: float, lambda_: float) -> float:
     return pfail
 
 
+def normalize_vector(v: mx.array, epsilon: float = 1e-8) -> mx.array:
+    """
+    Normalize vector to unit norm.
+    
+    Args:
+        v: MLX array of shape [dim]
+        epsilon: Small constant to prevent division by zero
+        
+    Returns:
+        Normalized vector of shape [dim]
+    """
+    norm = mx.sqrt(mx.sum(v * v) + epsilon)
+    return v / norm
+
+
+def compute_cosine_distance(v1: mx.array, v2: mx.array, epsilon: float = 1e-8) -> float:
+    """
+    Compute cosine distance: 1 - cos(v1, v2).
+    
+    Distance is bounded in [0, 2]:
+    - 0 = vectors are identical
+    - 1 = vectors are orthogonal
+    - 2 = vectors are opposite
+    
+    Args:
+        v1, v2: MLX arrays of shape [dim]
+        epsilon: Numerical stability constant
+        
+    Returns:
+        Cosine distance in [0, 2]
+    """
+    # Normalize both vectors
+    v1_norm = normalize_vector(v1, epsilon)
+    v2_norm = normalize_vector(v2, epsilon)
+    
+    # Cosine similarity
+    cos_sim = float(mx.sum(v1_norm * v2_norm).item())
+    
+    # Clamp to [-1, 1] to handle numerical errors
+    cos_sim = max(-1.0, min(1.0, cos_sim))
+    
+    # Cosine distance
+    cos_dist = 1.0 - cos_sim
+    
+    return cos_dist
+
+
+def compute_surprise(probs: mx.array, selected_token: int) -> float:
+    """
+    Compute token surprise: -log p(x_t | x_<t).
+    
+    Args:
+        probs: Probability distribution over vocabulary (already softmaxed)
+        selected_token: Token ID that was generated
+        
+    Returns:
+        Surprise in nats (natural log)
+    """
+    selected_prob = float(probs[selected_token].item())
+    # Clamp to avoid log(0)
+    selected_prob = max(1e-10, min(1.0, selected_prob))
+    surprise = -math.log(selected_prob)
+    return surprise
+
+
+def compute_pri(surprise: float, delta_h: float, alpha: float = 0.1) -> float:
+    """
+    Compute Predictive Rupture Index: PRI = S_t × (1 + α × Δh_t).
+    
+    Combines token surprise with hidden-state trajectory jump to detect
+    confident predictions that require internal representational shifts.
+    
+    Args:
+        surprise: -log p(x_t | x_<t), in nats
+        delta_h: Cosine distance between consecutive final-layer hidden states
+        alpha: Scaling factor for hidden-state jump (default 0.1)
+        
+    Returns:
+        PRI scalar, typically in [0, 20] for natural text
+        
+    Interpretation:
+        - Low PRI: Expected token + stable trajectory → trust
+        - High PRI: Unexpected token OR trajectory jump → flag
+    """
+    pri = surprise * (1.0 + alpha * delta_h)
+    return pri
+
+
 def compute_all_metrics(
     probs: mx.array,
     hidden_vectors: List[mx.array],

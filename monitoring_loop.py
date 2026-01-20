@@ -51,10 +51,12 @@ class HallucinationMonitor:
         pfail_cutoff: float = DEFAULT_PFAIL_CUTOFF,
         max_tokens: int = DEFAULT_MAX_TOKENS,
         check_every_k_tokens: int = DEFAULT_CHECK_EVERY_K_TOKENS,
-        temperature: float = DEFAULT_TEMPERATURE
+        temperature: float = DEFAULT_TEMPERATURE,
+        alpha_pri: float = 0.1,
+        compute_pri: bool = True
     ):
         """
-        Initialize hallucination monitor.
+        Initialize hallucination monitor with PRI support.
         
         Args:
             adapter: ModelAdapter instance for generation
@@ -65,6 +67,8 @@ class HallucinationMonitor:
             max_tokens: Maximum generation length
             check_every_k_tokens: Frequency of uncertainty checks (1 = every token)
             temperature: Sampling temperature (0.0 = greedy)
+            alpha_pri: PRI scaling parameter for hidden-state jumps (default 0.1)
+            compute_pri: Enable/disable PRI computation (default True)
         """
         self.adapter = adapter
         self.tokenizer = tokenizer
@@ -74,6 +78,8 @@ class HallucinationMonitor:
         self.max_tokens = max_tokens
         self.check_every_k_tokens = check_every_k_tokens
         self.temperature = temperature
+        self.alpha_pri = alpha_pri
+        self.compute_pri_flag = compute_pri
     
     def generate_with_monitoring(
         self,
@@ -115,9 +121,13 @@ class HallucinationMonitor:
         halt_reason = ""
         halt_step = None
         
+        # NEW: Initialize PRI tracking
+        previous_hidden_final = None
+        
         # Lightweight accumulator for calibration vs full trajectory for monitoring
         if compute_score_only:
             top_hbar_s = []  # Keep top-k ℏₛ values
+            top_pri = []  # NEW: Keep top-k PRI values
             k_top = 5
         else:
             trajectory = []
@@ -168,19 +178,50 @@ class HallucinationMonitor:
                     epsilon=DEFAULT_EPSILON
                 )
                 
+                # NEW: PRI computation
+                if self.compute_pri_flag:
+                    current_hidden_final = hidden_vectors[-1]  # Last layer = final layer
+                    
+                    # Compute surprise (using already-computed probs)
+                    surprise = uncertainty_metrics.compute_surprise(probs, next_token)
+                    
+                    # Compute hidden-state jump
+                    if previous_hidden_final is None:
+                        # First token: no jump, but keep surprise
+                        delta_h = 0.0
+                        pri = surprise  # PRI_0 = S_0
+                    else:
+                        delta_h = uncertainty_metrics.compute_cosine_distance(
+                            current_hidden_final,
+                            previous_hidden_final
+                        )
+                        pri = uncertainty_metrics.compute_pri(surprise, delta_h, self.alpha_pri)
+                    
+                    metrics['pri'] = pri
+                    metrics['surprise'] = surprise
+                    metrics['delta_h'] = delta_h
+                    
+                    # Update state for next iteration
+                    previous_hidden_final = current_hidden_final
+                
                 if compute_score_only:
                     # Lightweight: accumulate only ℏₛ (keep top-k)
                     top_hbar_s.append(float(metrics['hbar_s']))
                     top_hbar_s.sort()
                     top_hbar_s = top_hbar_s[-k_top:]  # Keep only top-k
+                    
+                    if self.compute_pri_flag:
+                        top_pri.append(float(metrics['pri']))
+                        top_pri.sort()
+                        top_pri = top_pri[-k_top:]
                 else:
                     # Full monitoring: build trajectory
                     metrics["step"] = step
                     trajectory.append(metrics)
                     
                     if verbose:
-                        print(f"Step {step}: P_fail={metrics['pfail']:.4f}, ℏₛ={metrics['hbar_s']:.4f}, "
-                              f"Δμ={metrics['delta_mu']:.4f}, Δσ={metrics['delta_sigma']:.4f}")
+                        pri_str = f", PRI={metrics['pri']:.4f}" if self.compute_pri_flag else ""
+                        print(f"Step {step}: P_fail={metrics['pfail']:.4f}, ℏₛ={metrics['hbar_s']:.4f}{pri_str}")
                     
                     # Check halting condition BEFORE appending risky token
                     should_halt, reason = self._should_halt(metrics["pfail"], step)
@@ -216,9 +257,13 @@ class HallucinationMonitor:
         
         # Return lightweight score for calibration or full result for monitoring
         if compute_score_only:
-            score = sum(top_hbar_s) / len(top_hbar_s) if top_hbar_s else 0.0
+            hbar_s_score = sum(top_hbar_s) / len(top_hbar_s) if top_hbar_s else 0.0
+            pri_score = sum(top_pri) / len(top_pri) if (self.compute_pri_flag and top_pri) else 0.0
+            
             return {
-                "score": float(score),
+                "score": float(hbar_s_score),  # Backward compatibility
+                "hbar_s_score": float(hbar_s_score),
+                "pri_score": float(pri_score),
                 "halted": halted,  # Should be False when pfail_cutoff > 1.0
                 "halt_reason": halt_reason
             }
