@@ -1,0 +1,382 @@
+{
+  "model_path": "mlx-community/Phi-3-mini-4k-instruct-4bit",
+  "model_type": "phi3",
+  "test_data_path": "./data/halueval/splits/test.json",
+  "calibrated_params_path": "./calibrated_params/phi3_mini_20260121_200802_n200.json",
+  "n_test_samples": 50,
+  "max_tokens": 20,
+  "calibrated_thresholds": {
+    "tau_hbar": 2.403059160550799,
+    "tau_pri": 0.7738704683941954
+  },
+  "auroc_and_prauc": {
+    "hbar_alone": {
+      "auroc": 0.3333333333333333,
+      "pr_auc": 0.5292339090421252
+    },
+    "pri_alone": {
+      "auroc": 0.34811165845648606,
+      "pr_auc": 0.5232775645374349
+    }
+  },
+  "performance_at_calibrated_thresholds": {
+    "hbar_alone": {
+      "precision": 0.58,
+      "recall": 1.0,
+      "confusion_matrix": [
+        [
+          0,
+          21
+        ],
+        [
+          0,
+          29
+        ]
+      ]
+    },
+    "pri_alone": {
+      "precision": 0.5714285714285714,
+      "recall": 0.9655172413793104,
+      "confusion_matrix": [
+        [
+          0,
+          21
+        ],
+        [
+          1,
+          28
+        ]
+      ]
+    }
+  },
+  "best_on_test_sweep": {
+    "hbar_alone": {
+      "best_tau_test": 2.2653652713980477,
+      "best_precision_test": 0.58
+    },
+    "pri_alone": {
+      "best_tau_test": 0.5940285182581774,
+      "best_precision_test": 0.58
+    }
+  },
+  "quadrant_analysis": {
+    "q1": {
+      "count": 0,
+      "hallucination_rate": 0.0
+    },
+    "q2": {
+      "count": 49,
+      "hallucination_rate": 0.5714285714285714
+    },
+    "q3": {
+      "count": 0,
+      "hallucination_rate": 0.0
+    },
+    "q4": {
+      "count": 1,
+      "hallucination_rate": 1.0
+    }
+  },
+  "scores_by_sample": [
+    {
+      "sample_id": "qa_814_cor",
+      "label": 0,
+      "hbar_s": 2.066027198058703,
+      "pri": 1.2565844934934816
+    },
+    {
+      "sample_id": "summarization_1008_cor",
+      "label": 0,
+      "hbar_s": 1.9473524654354306,
+      "pri": 1.071154317324765
+    },
+    {
+      "sample_id": "qa_1576_hal",
+      "label": 1,
+      "hbar_s": 1.7066157843264729,
+      "pri": 1.3257986960630377
+    },
+    {
+      "sample_id": "qa_584_hal",
+      "label": 1,
+      "hbar_s": 2.074430202019183,
+      "pri": 1.1497617341999464
+    },
+    {
+      "sample_id": "qa_1059_cor",
+      "label": 0,
+      "hbar_s": 1.818490373495078,
+      "pri": 1.0245169339103999
+    },
+    {
+      "sample_id": "qa_640_hal",
+      "label": 1,
+      "hbar_s": 1.9465202811133218,
+      "pri": 1.0116616391624382
+    },
+    {
+      "sample_id": "dialogue_986_cor",
+      "label": 0,
+      "hbar_s": 1.5272250208484937,
+      "pri": 1.2002353406052415
+    },
+    {
+      "sample_id": "qa_773_hal",
+      "label": 1,
+      "hbar_s": 1.9055802795352907,
+      "pri": 1.0227104826745115
+    },
+    {
+      "sample_id": "summarization_844_hal",
+      "label": 1,
+      "hbar_s": 2.164762511857894,
+      "pri": 0.8872946906422481
+    },
+    {
+      "sample_id": "qa_427_hal",
+      "label": 1,
+      "hbar_s": 2.006484777533812,
+      "pri": 0.9773601902055014
+    },
+    {
+      "sample_id": "qa_583_cor",
+      "label": 0,
+      "hbar_s": 2.0519986631592766,
+      "pri": 1.0092354825179273
+    },
+    {
+      "sample_id": "summarization_171_hal",
+      "label": 1,
+      "hbar_s": 2.138988664320251,
+      "pri": 0.9056879784715735
+    },
+    {
+      "sample_id": "qa_539_hal",
+      "label": 1,
+      "hbar_s": 1.990329987655834,
+      "pri": 1.241468628266223
+    },
+    {
+      "sample_id": "qa_975_hal",
+      "label": 1,
+      "hbar_s": 2.0210601593360087,
+      "pri": 1.0468345798335723
+    },
+    {
+      "sample_id": "summarization_194_hal",
+      "label": 1,
+      "hbar_s": 2.1411883991416993,
+      "pri": 0.9776536021066207
+    },
+    {
+      "sample_id": "qa_883_hal",
+      "label": 1,
+      "hbar_s": 1.9235326279375333,
+      "pri": 1.054436683603553
+    },
+    {
+      "sample_id": "summarization_524_cor",
+      "label": 0,
+      "hbar_s": 1.8903801461182375,
+      "pri": 1.2358934013241312
+    },
+    {
+      "sample_id": "dialogue_835_hal",
+      "label": 1,
+      "hbar_s": 1.5291046164305455,
+      "pri": 1.2161567588217024
+    },
+    {
+      "sample_id": "summarization_1520_cor",
+      "label": 0,
+      "hbar_s": 1.946063586747938,
+      "pri": 1.0784440442265235
+    },
+    {
+      "sample_id": "qa_1435_cor",
+      "label": 0,
+      "hbar_s": 1.8714438949726777,
+      "pri": 0.9124111135782782
+    },
+    {
+      "sample_id": "qa_876_hal",
+      "label": 1,
+      "hbar_s": 1.937407297543168,
+      "pri": 1.0560846805570419
+    },
+    {
+      "sample_id": "dialogue_1398_hal",
+      "label": 1,
+      "hbar_s": 1.2341071724789572,
+      "pri": 1.4148771839073173
+    },
+    {
+      "sample_id": "dialogue_139_hal",
+      "label": 1,
+      "hbar_s": 1.3732583876651727,
+      "pri": 0.8704981818571561
+    },
+    {
+      "sample_id": "qa_728_hal",
+      "label": 1,
+      "hbar_s": 1.8776968521400288,
+      "pri": 0.9393929954381246
+    },
+    {
+      "sample_id": "dialogue_373_hal",
+      "label": 1,
+      "hbar_s": 1.465776715772907,
+      "pri": 1.2400392000502947
+    },
+    {
+      "sample_id": "qa_1385_cor",
+      "label": 0,
+      "hbar_s": 1.8308151685372518,
+      "pri": 1.054329413519806
+    },
+    {
+      "sample_id": "dialogue_432_hal",
+      "label": 1,
+      "hbar_s": 1.6024536519316637,
+      "pri": 1.2306357250230169
+    },
+    {
+      "sample_id": "dialogue_1415_cor",
+      "label": 0,
+      "hbar_s": 1.582733992759021,
+      "pri": 1.1898035975427814
+    },
+    {
+      "sample_id": "dialogue_495_hal",
+      "label": 1,
+      "hbar_s": 1.6760949901735351,
+      "pri": 1.1828656791295966
+    },
+    {
+      "sample_id": "summarization_1096_hal",
+      "label": 1,
+      "hbar_s": 2.103846202053645,
+      "pri": 0.9654062401408214
+    },
+    {
+      "sample_id": "dialogue_1627_cor",
+      "label": 0,
+      "hbar_s": 1.5048437158070942,
+      "pri": 1.3274920803794559
+    },
+    {
+      "sample_id": "qa_1315_cor",
+      "label": 0,
+      "hbar_s": 1.7294202290327516,
+      "pri": 1.1612583187574377
+    },
+    {
+      "sample_id": "dialogue_841_cor",
+      "label": 0,
+      "hbar_s": 1.3873556471775295,
+      "pri": 1.3284868486000432
+    },
+    {
+      "sample_id": "summarization_684_hal",
+      "label": 1,
+      "hbar_s": 2.2059028058774586,
+      "pri": 0.8599843443013697
+    },
+    {
+      "sample_id": "summarization_767_hal",
+      "label": 1,
+      "hbar_s": 2.1453563657188446,
+      "pri": 0.9502168951055208
+    },
+    {
+      "sample_id": "qa_352_hal",
+      "label": 1,
+      "hbar_s": 2.0791145211749806,
+      "pri": 1.021086707997154
+    },
+    {
+      "sample_id": "qa_206_cor",
+      "label": 0,
+      "hbar_s": 1.6592473955091005,
+      "pri": 1.1485991679064944
+    },
+    {
+      "sample_id": "summarization_1558_hal",
+      "label": 1,
+      "hbar_s": 2.12583779526735,
+      "pri": 0.9357223875216848
+    },
+    {
+      "sample_id": "qa_633_hal",
+      "label": 1,
+      "hbar_s": 2.144881942474332,
+      "pri": 1.3831481068413578
+    },
+    {
+      "sample_id": "summarization_1145_cor",
+      "label": 0,
+      "hbar_s": 1.1651288971199243,
+      "pri": 1.6972213607348174
+    },
+    {
+      "sample_id": "qa_462_hal",
+      "label": 1,
+      "hbar_s": 2.2653652713980477,
+      "pri": 0.5940285182581774
+    },
+    {
+      "sample_id": "summarization_710_cor",
+      "label": 0,
+      "hbar_s": 2.0453465990943323,
+      "pri": 1.0467150037741504
+    },
+    {
+      "sample_id": "qa_1282_cor",
+      "label": 0,
+      "hbar_s": 2.077403065497924,
+      "pri": 1.166564146445258
+    },
+    {
+      "sample_id": "summarization_1332_hal",
+      "label": 1,
+      "hbar_s": 2.001940044785387,
+      "pri": 0.9817110303177357
+    },
+    {
+      "sample_id": "summarization_1416_cor",
+      "label": 0,
+      "hbar_s": 2.005424649506142,
+      "pri": 0.9312152532349847
+    },
+    {
+      "sample_id": "dialogue_192_cor",
+      "label": 0,
+      "hbar_s": 1.799931823390157,
+      "pri": 1.1526606977220097
+    },
+    {
+      "sample_id": "qa_300_cor",
+      "label": 0,
+      "hbar_s": 1.882741229597778,
+      "pri": 1.1796017602450266
+    },
+    {
+      "sample_id": "dialogue_613_hal",
+      "label": 1,
+      "hbar_s": 1.2125594019291193,
+      "pri": 1.2149977717034333
+    },
+    {
+      "sample_id": "summarization_1615_cor",
+      "label": 0,
+      "hbar_s": 1.9222283615196094,
+      "pri": 1.2169623990517702
+    },
+    {
+      "sample_id": "summarization_1629_hal",
+      "label": 1,
+      "hbar_s": 2.015130728864932,
+      "pri": 1.1768992838413335
+    }
+  ]
+}

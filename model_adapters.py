@@ -98,20 +98,21 @@ class ModelAdapter(ABC):
         else:
             raise ValueError(f"Unexpected hidden state shape: {x.shape}")
     
-    def _make_causal_mask(self, seq_len: int) -> Optional[mx.array]:
+    def _make_causal_mask(self, seq_len: int, dtype: mx.Dtype = mx.float16) -> Optional[mx.array]:
         """
         Create causal attention mask for autoregressive generation.
         
         Args:
             seq_len: Sequence length
+            dtype: Data type for mask (default float16 for Qwen/Phi-3 compatibility)
             
         Returns:
             Causal mask of shape [seq_len, seq_len] or None if not needed
         """
         # Create causal mask: upper triangular matrix of -inf
         # mask[i, j] = 0 if i >= j else -inf (can only attend to past)
-        # Use float32 to avoid dtype issues
-        mask = mx.full((seq_len, seq_len), float('-inf'), dtype=mx.float32)
+        # Use float16 by default for Qwen/Phi-3 compatibility
+        mask = mx.full((seq_len, seq_len), float('-inf'), dtype=dtype)
         mask = mx.triu(mask, k=1)  # Upper triangle above diagonal
         return mask
     

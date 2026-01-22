@@ -1,0 +1,314 @@
+================================================================================
+Threshold Calibration
+================================================================================
+
+Loading model: mlx-community/Phi-3-mini-4k-instruct-4bit...
+Fetching 9 files:   0%|          | 0/9 [00:00<?, ?it/s]Fetching 9 files:  11%|█         | 1/9 [00:00<00:03,  2.10it/s]Fetching 9 files:  33%|███▎      | 3/9 [03:06<06:53, 68.92s/it]Fetching 9 files: 100%|██████████| 9/9 [03:06<00:00, 20.69s/it]
+✓ Model loaded
+
+Creating adapter...
+✓ Adapter created: 32 layers
+
+Loading training data from ./data/halueval/splits/train.json...
+Loaded 4998 samples from ./data/halueval/splits/train.json
+Sampled 200 examples for calibration (seed=42)
+
+================================================================================
+Joint (ℏₛ + PRI) Calibration
+================================================================================
+
+
+================================================================================
+Pass 1: Precomputing Scores (200 samples)
+================================================================================
+
+Generating:   0%|          | 0/200 [00:00<?, ?it/s]Generating:  92%|█████████▏| 183/200 [00:00<00:00, 1827.08it/s]Generating: 100%|██████████| 200/200 [00:00<00:00, 1803.15it/s]
+/Users/mstrkttt/Library/Python/3.9/lib/python/site-packages/numpy/lib/function_base.py:2897: RuntimeWarning: invalid value encountered in divide
+  c /= stddev[:, None]
+Error on sample summarization_231_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_1361_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_1152_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_973_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_140_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_351_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_332_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_1665_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_441_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_497_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_734_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_1606_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_660_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_511_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_804_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_158_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_451_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_749_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_576_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_1467_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_807_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_941_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_126_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_1583_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_68_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_544_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_1569_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_175_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_1108_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_1436_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_1075_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_1116_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_362_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_158_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_315_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_439_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_356_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_135_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_183_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_1359_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_1226_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_474_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_246_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_1114_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_637_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_445_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_35_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_552_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_716_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_571_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_39_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_119_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_1040_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_453_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_436_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_41_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_1115_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_1617_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_545_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_232_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_427_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_1405_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_434_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_1417_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_180_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_1655_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_1308_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_29_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_370_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_412_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_1246_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_1521_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_362_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_1560_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_1478_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_1171_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_184_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_337_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_236_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_1506_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_831_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_1321_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_1411_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_1363_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_1460_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_988_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_1431_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_291_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_1236_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_1391_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_161_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_742_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_1518_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_1292_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_1309_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_871_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_1652_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_1157_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_83_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_551_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_1029_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_1424_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_56_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_767_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_452_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_397_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_1173_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_191_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_1082_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_23_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_1406_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_1254_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_337_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_1359_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_83_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_1454_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_272_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_623_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_137_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_580_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_619_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_1290_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_757_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_1445_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_544_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_1107_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_265_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_1097_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_1187_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_370_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_961_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_1483_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_1074_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_47_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_552_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_484_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_1553_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_365_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_1355_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_1179_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_845_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_635_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_1279_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_549_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_1129_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_1526_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_255_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_1078_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_1259_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_1144_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_724_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_649_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_1106_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_949_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_105_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_439_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_817_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_1220_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_1201_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_9_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_310_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_584_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_263_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_1140_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_589_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_1529_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_597_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_1557_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_1003_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_1154_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_1658_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_922_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_1445_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_252_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_1048_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_1048_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_1322_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_704_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_880_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_574_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_332_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_1017_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_952_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_1123_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_1408_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_833_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_1335_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_76_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_570_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_1110_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_1160_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_1539_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_1320_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample qa_689_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_1164_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_939_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_234_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_244_hal: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample summarization_1630_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+Error on sample dialogue_1641_cor: [scaled_dot_product_attention] Mask type must promote to output type float16.
+
+================================================================================
+Score Statistics by Label
+================================================================================
+
+ℏₛ (Semantic Uncertainty):
+  Hallucinated (label=1): mean=0.000, std=0.000, n=103
+  Correct (label=0):      mean=0.000, std=0.000, n=97
+  Mean difference: 0.000
+  Effect size (Cohen's d): 0.000
+
+PRI (Predictive Rupture Index):
+  Hallucinated (label=1): mean=0.000, std=0.000
+  Correct (label=0):      mean=0.000, std=0.000
+  Mean difference: 0.000
+  Effect size (Cohen's d): 0.000
+
+Signal Correlation (ℏₛ vs PRI): nan
+  ⚠ Signals are highly correlated (may be redundant)
+
+================================================================================
+
+================================================================================
+Pass 2: Joint Calibration
+================================================================================
+
+Model 1: ℏₛ alone
+----------------------------------------
+  AUROC: 0.5000
+  Best τ: 0.0000 (classify as hallucination if ℏₛ ≤ τ)
+  Precision @ Recall≥0.9: 0.5150
+
+Model 2: PRI alone
+----------------------------------------
+  AUROC: 0.5000
+  Best τ: 0.0000 (classify as hallucination if PRI ≥ τ)
+  Precision @ Recall≥0.9: 0.5150
+
+Model 3: Joint (ℏₛ, PRI) with 5-Fold CV
+----------------------------------------
+  AUROC (CV): 0.5000
+  Weights: w_hbar=0.000, w_pri=0.000, intercept=0.060
+  Precision @ Recall≥0.9: 0.5150
+
+================================================================================
+Model Comparison
+================================================================================
+  AUROC: ℏₛ=0.5000, PRI=0.5000, Joint=0.5000
+  Best model: ℏₛ alone
+
+================================================================================
+Quadrant Analysis (using calibrated thresholds)
+================================================================================
+  τ_hbar = 0.000 (classify as hallucination if ℏₛ ≤ τ)
+  τ_pri = 0.000 (classify as hallucination if PRI ≥ τ)
+
+Q1: ℏₛ OK, PRI OK (Low Risk)
+  Count: 0 (0.0%)
+  Hallucination rate: 0.000
+
+Q2: ℏₛ flags, PRI flags (High Risk)
+  Count: 200 (100.0%)
+  Hallucination rate: 0.515
+
+Q3: ℏₛ OK, PRI flags (PRI-only detection)
+  Count: 0 (0.0%)
+  Hallucination rate: 0.000
+
+Q4: ℏₛ flags, PRI OK (ℏₛ-only detection)
+  Count: 0 (0.0%)
+  Hallucination rate: 0.000
+
+Saved calibrated parameters to ./calibrated_params/phi3_mini_20260121_153817_n200.json
+
+================================================================================
+✓ Calibration Complete!
+================================================================================
+
+Results saved to: ./calibrated_params/phi3_mini_20260121_153817_n200.json
+
+Key findings:
+  - AUROC (ℏₛ alone):  0.5000
+  - AUROC (PRI alone): 0.5000
+  - AUROC (Joint):     0.5000
+  - τ_hbar: 0.0000
+  - τ_pri:  0.0000
+

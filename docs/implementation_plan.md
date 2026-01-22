@@ -568,7 +568,7 @@ Logical sequence of implementation steps to minimize conflicts and ensure succes
 - After step 4: Single model generates with hidden state collection working
 - After step 5: Monitoring loop halts generation correctly
 - After step 8: Calibration produces reasonable (τ, λ) values
-- After step 10: All 3 models run end-to-end without errors
+- After step 10: All 3 models run end-to-end without ]\]\
 - After step 13: Full results ready for analysis and publication
 
 **Estimated timeline:**

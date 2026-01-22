@@ -1,0 +1,15 @@
+{
+  "auroc_hbar": 0.527138792968922,
+  "auroc_pri": 0.6328850547577415,
+  "auroc_joint": 0.6337573373773102,
+  "tau_hbar": 2.689381382044256,
+  "tau_pri": 1.0920455216491243,
+  "joint_model_weights": {
+    "w_hbar": 0.04498783154492502,
+    "w_pri": 2.0974449925607193,
+    "intercept": -2.7402814084476392
+  },
+  "best_precision_hbar": 0.5273132664437012,
+  "best_precision_pri": 0.5723192019950125,
+  "best_precision_joint": 0.572851805728518
+}
