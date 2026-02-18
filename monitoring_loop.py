@@ -53,7 +53,8 @@ class HallucinationMonitor:
         check_every_k_tokens: int = DEFAULT_CHECK_EVERY_K_TOKENS,
         temperature: float = DEFAULT_TEMPERATURE,
         alpha_pri: float = 0.1,
-        compute_pri: bool = True
+        compute_pri: bool = True,
+        export_hidden_strata: bool = False
     ):
         """
         Initialize hallucination monitor with PRI support.
@@ -69,6 +70,7 @@ class HallucinationMonitor:
             temperature: Sampling temperature (0.0 = greedy)
             alpha_pri: PRI scaling parameter for hidden-state jumps (default 0.1)
             compute_pri: Enable/disable PRI computation (default True)
+            export_hidden_strata: Compute layer-stratified ℏₛ variants (default False)
         """
         self.adapter = adapter
         self.tokenizer = tokenizer
@@ -80,6 +82,7 @@ class HallucinationMonitor:
         self.temperature = temperature
         self.alpha_pri = alpha_pri
         self.compute_pri_flag = compute_pri
+        self.export_hidden_strata = export_hidden_strata
     
     def generate_with_monitoring(
         self,
@@ -128,6 +131,10 @@ class HallucinationMonitor:
         if compute_score_only:
             top_hbar_s = []  # Keep top-k ℏₛ values
             top_pri = []  # NEW: Keep top-k PRI values
+            top_hbar_s_early = []
+            top_hbar_s_middle = []
+            top_hbar_s_final = []
+            flex_profile_last = None
             k_top = 5
         else:
             trajectory = []
@@ -178,6 +185,15 @@ class HallucinationMonitor:
                     epsilon=DEFAULT_EPSILON
                 )
                 
+                # Optional: layer-stratified ℏₛ variants + flexibility profile
+                if self.export_hidden_strata:
+                    stratified = uncertainty_metrics.compute_hbar_s_stratified(
+                        hidden_vectors,
+                        metrics["delta_mu"]
+                    )
+                    metrics.update(stratified)
+                    flex_profile_last = uncertainty_metrics.compute_layer_flexibility_profile(hidden_vectors)
+                
                 # NEW: PRI computation
                 if self.compute_pri_flag:
                     current_hidden_final = hidden_vectors[-1]  # Last layer = final layer
@@ -214,6 +230,17 @@ class HallucinationMonitor:
                         top_pri.append(float(metrics['pri']))
                         top_pri.sort()
                         top_pri = top_pri[-k_top:]
+                    
+                    if self.export_hidden_strata:
+                        top_hbar_s_early.append(float(metrics["hbar_s_early"]))
+                        top_hbar_s_early.sort()
+                        top_hbar_s_early = top_hbar_s_early[-k_top:]
+                        top_hbar_s_middle.append(float(metrics["hbar_s_middle"]))
+                        top_hbar_s_middle.sort()
+                        top_hbar_s_middle = top_hbar_s_middle[-k_top:]
+                        top_hbar_s_final.append(float(metrics["hbar_s_final"]))
+                        top_hbar_s_final.sort()
+                        top_hbar_s_final = top_hbar_s_final[-k_top:]
                 else:
                     # Full monitoring: build trajectory
                     metrics["step"] = step
@@ -259,14 +286,25 @@ class HallucinationMonitor:
         if compute_score_only:
             hbar_s_score = sum(top_hbar_s) / len(top_hbar_s) if top_hbar_s else 0.0
             pri_score = sum(top_pri) / len(top_pri) if (self.compute_pri_flag and top_pri) else 0.0
+            hbar_s_early_score = sum(top_hbar_s_early) / len(top_hbar_s_early) if top_hbar_s_early else 0.0
+            hbar_s_middle_score = sum(top_hbar_s_middle) / len(top_hbar_s_middle) if top_hbar_s_middle else 0.0
+            hbar_s_final_score = sum(top_hbar_s_final) / len(top_hbar_s_final) if top_hbar_s_final else 0.0
             
-            return {
+            result = {
                 "score": float(hbar_s_score),  # Backward compatibility
                 "hbar_s_score": float(hbar_s_score),
                 "pri_score": float(pri_score),
                 "halted": halted,  # Should be False when pfail_cutoff > 1.0
                 "halt_reason": halt_reason
             }
+            if self.export_hidden_strata:
+                result.update({
+                    "hbar_s_early": float(hbar_s_early_score),
+                    "hbar_s_middle": float(hbar_s_middle_score),
+                    "hbar_s_final": float(hbar_s_final_score),
+                    "flex_profile": flex_profile_last
+                })
+            return result
         else:
             # Decode generated text
             if generated_tokens:

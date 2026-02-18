@@ -91,6 +91,75 @@ def compute_delta_sigma_proxy(hidden_vectors: List[mx.array], epsilon: float = 1
     return delta_sigma
 
 
+def compute_delta_sigma_stratified(hidden_states_per_block: List[mx.array]) -> dict:
+    """
+    Split per-block hidden states into early/middle/final strata and compute dispersion per stratum.
+    
+    Strata:
+      early:  [0 : L//4]
+      middle: [L//4 : 3*L//4]
+      final:  [3*L//4 : L]
+    
+    Returns:
+        Dict with keys: delta_sigma_early, delta_sigma_middle, delta_sigma_final
+    """
+    if not hidden_states_per_block:
+        raise ValueError("hidden_states_per_block cannot be empty")
+    
+    L = len(hidden_states_per_block)
+    early_end = L // 4
+    middle_end = (3 * L) // 4
+    
+    early = hidden_states_per_block[0:early_end]
+    middle = hidden_states_per_block[early_end:middle_end]
+    final = hidden_states_per_block[middle_end:L]
+    
+    def _safe_delta_sigma(vectors: List[mx.array]) -> float:
+        if not vectors:
+            return 0.0
+        return compute_delta_sigma_proxy(vectors)
+    
+    return {
+        "delta_sigma_early": _safe_delta_sigma(early),
+        "delta_sigma_middle": _safe_delta_sigma(middle),
+        "delta_sigma_final": _safe_delta_sigma(final)
+    }
+
+
+def compute_hbar_s_stratified(hidden_states_per_block: List[mx.array], delta_mu: float) -> dict:
+    """
+    Compute stratified ℏₛ using delta_mu and per-stratum delta_sigma.
+    
+    Returns:
+        Dict with keys: hbar_s_early, hbar_s_middle, hbar_s_final
+    """
+    deltas = compute_delta_sigma_stratified(hidden_states_per_block)
+    return {
+        "hbar_s_early": math.sqrt(delta_mu * deltas["delta_sigma_early"]) if delta_mu > 0 else 0.0,
+        "hbar_s_middle": math.sqrt(delta_mu * deltas["delta_sigma_middle"]) if delta_mu > 0 else 0.0,
+        "hbar_s_final": math.sqrt(delta_mu * deltas["delta_sigma_final"]) if delta_mu > 0 else 0.0
+    }
+
+
+def compute_layer_flexibility_profile(hidden_states_per_block: List[mx.array]) -> List[float]:
+    """
+    Compute mean flexibility between adjacent blocks across depth.
+    
+    Returns:
+        List of length L-1 with cosine distances between adjacent blocks.
+    """
+    if not hidden_states_per_block:
+        raise ValueError("hidden_states_per_block cannot be empty")
+    if len(hidden_states_per_block) < 2:
+        return []
+    
+    profile = []
+    for i in range(len(hidden_states_per_block) - 1):
+        d = compute_cosine_distance(hidden_states_per_block[i], hidden_states_per_block[i + 1])
+        profile.append(float(d))
+    return profile
+
+
 def compute_hbar_s(delta_mu: float, delta_sigma: float) -> float:
     """
     Compute semantic uncertainty: √(Δμ × Δσ)

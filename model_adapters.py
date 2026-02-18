@@ -12,7 +12,11 @@ from abc import ABC, abstractmethod
 from typing import Any, List, Optional
 import mlx.core as mx
 import mlx.nn as nn
-from mlx_lm.models.llama import create_attention_mask
+
+try:
+    from mlx_lm.models.llama import create_attention_mask
+except Exception:
+    create_attention_mask = None
 
 import hidden_state_collector
 
@@ -115,6 +119,20 @@ class ModelAdapter(ABC):
         mask = mx.full((seq_len, seq_len), float('-inf'), dtype=dtype)
         mask = mx.triu(mask, k=1)  # Upper triangle above diagonal
         return mask
+
+    def _make_attention_mask(self, x: mx.array, cache: Optional[Any]) -> Optional[mx.array]:
+        """
+        Create attention mask using MLX-LM helper when available.
+
+        Falls back to a simple causal mask if the helper is unavailable.
+        """
+        if create_attention_mask is not None:
+            try:
+                return create_attention_mask(x, cache)
+            except Exception:
+                pass
+        seq_len = x.shape[1] if x.ndim >= 2 else int(x.shape[0])
+        return self._make_causal_mask(seq_len, dtype=x.dtype if hasattr(x, "dtype") else mx.float16)
     
     def _call_layer_robust(self, layer: Any, x: mx.array, mask: Optional[mx.array] = None) -> mx.array:
         """
@@ -242,9 +260,9 @@ class LlamaAdapter(ModelAdapter):
         # Embed tokens: [1, seq_len, hidden_dim]
         x = self.embed_tokens(input_ids)
         
-        # Create cache and mask exactly as MLX-LM does
+        # Create cache and mask (prefer MLX-LM helper; fallback to causal mask)
         cache = [None] * len(self.layers)
-        mask = create_attention_mask(x, cache[0])
+        mask = self._make_attention_mask(x, cache[0])
         
         # Pass through each transformer block
         for layer_idx, (layer, c) in enumerate(zip(self.layers, cache)):
@@ -418,6 +436,135 @@ class Phi3Adapter(ModelAdapter):
         return logits
 
 
+class MistralAdapter(ModelAdapter):
+    """
+    Adapter for Mistral-style models.
+
+    Mistral MLX-LM models generally follow Llama-like structure.
+    """
+
+    def _locate_components(self) -> None:
+        if hasattr(self.model, "model"):
+            self.embed_tokens = (
+                getattr(self.model.model, "embed_tokens", None)
+                or getattr(self.model.model, "tok_embeddings", None)
+                or getattr(self.model.model, "wte", None)
+            )
+            self.layers = getattr(self.model.model, "layers", None) or getattr(self.model.model, "h", None)
+            self.norm = getattr(self.model.model, "norm", None) or getattr(self.model.model, "ln_f", None)
+            self.lm_head = getattr(self.model, "lm_head", None)
+        else:
+            self.embed_tokens = (
+                getattr(self.model, "embed_tokens", None)
+                or getattr(self.model, "tok_embeddings", None)
+                or getattr(self.model, "wte", None)
+            )
+            self.layers = getattr(self.model, "layers", None) or getattr(self.model, "h", None)
+            self.norm = getattr(self.model, "norm", None) or getattr(self.model, "ln_f", None)
+            self.lm_head = getattr(self.model, "lm_head", None)
+
+    def forward_prefix_with_collection(self, input_ids: mx.array) -> mx.array:
+        self.collector.start()
+
+        if input_ids.ndim == 1:
+            input_ids = input_ids[None, :]
+
+        x = self.embed_tokens(input_ids)
+        cache = [None] * len(self.layers)
+        mask = self._make_attention_mask(x, cache[0])
+
+        for layer_idx, (layer, c) in enumerate(zip(self.layers, cache)):
+            x = self._call_layer_robust(layer, x, mask=mask)
+            last_token_hidden = self._extract_last_token_hidden(x)
+            self.collector.record(layer_idx, last_token_hidden)
+
+        x = self.norm(x)
+        last_token = self._extract_last_token_hidden(x)
+        logits = self.lm_head(last_token)
+        if logits.ndim == 2:
+            logits = logits.squeeze(0)
+        return logits
+
+
+class SmolLMAdapter(ModelAdapter):
+    """
+    Adapter for SmolLM models (Llama-like in MLX).
+    """
+
+    def _locate_components(self) -> None:
+        if hasattr(self.model, "model"):
+            self.embed_tokens = (
+                getattr(self.model.model, "embed_tokens", None)
+                or getattr(self.model.model, "tok_embeddings", None)
+                or getattr(self.model.model, "wte", None)
+            )
+            self.layers = getattr(self.model.model, "layers", None) or getattr(self.model.model, "h", None)
+            self.norm = getattr(self.model.model, "norm", None) or getattr(self.model.model, "ln_f", None)
+            self.lm_head = getattr(self.model, "lm_head", None)
+        elif hasattr(self.model, "transformer"):
+            self.embed_tokens = (
+                getattr(self.model.transformer, "embed_tokens", None)
+                or getattr(self.model.transformer, "tok_embeddings", None)
+                or getattr(self.model.transformer, "wte", None)
+            )
+            self.layers = getattr(self.model.transformer, "layers", None) or getattr(self.model.transformer, "h", None)
+            self.norm = getattr(self.model.transformer, "norm", None) or getattr(self.model.transformer, "ln_f", None)
+            self.lm_head = getattr(self.model, "lm_head", None)
+        else:
+            self.embed_tokens = (
+                getattr(self.model, "embed_tokens", None)
+                or getattr(self.model, "tok_embeddings", None)
+                or getattr(self.model, "wte", None)
+            )
+            self.layers = getattr(self.model, "layers", None) or getattr(self.model, "h", None)
+            self.norm = getattr(self.model, "norm", None) or getattr(self.model, "ln_f", None)
+            self.lm_head = getattr(self.model, "lm_head", None)
+
+    def forward_prefix_with_collection(self, input_ids: mx.array) -> mx.array:
+        self.collector.start()
+
+        if input_ids.ndim == 1:
+            input_ids = input_ids[None, :]
+
+        x = self.embed_tokens(input_ids)
+        cache = [None] * len(self.layers)
+        mask = self._make_attention_mask(x, cache[0])
+
+        for layer_idx, (layer, c) in enumerate(zip(self.layers, cache)):
+            x = self._call_layer_robust(layer, x, mask=mask)
+            last_token_hidden = self._extract_last_token_hidden(x)
+            self.collector.record(layer_idx, last_token_hidden)
+
+        x = self.norm(x)
+        last_token = self._extract_last_token_hidden(x)
+        logits = self.lm_head(last_token)
+        if logits.ndim == 2:
+            logits = logits.squeeze(0)
+        return logits
+
+
+class LLaVAMiniAdapter(ModelAdapter):
+    """
+    Adapter stub for LLaVA-mini style multimodal models.
+
+    This codebase is text-only (mlx-lm). LLaVA models are multimodal and
+    typically require mlx-vlm. We expose this adapter to make the intended
+    model type explicit, but it will raise with guidance at runtime.
+    """
+
+    def _locate_components(self) -> None:
+        raise RuntimeError(
+            "LLaVA-mini is a multimodal model. Use mlx-vlm for loading and "
+            "inference; this text-only adapter is not implemented."
+        )
+
+    def forward_prefix_with_collection(self, input_ids: mx.array) -> mx.array:
+        raise RuntimeError(
+            "LLaVA-mini is a multimodal model. Use mlx-vlm for loading and "
+            "inference; this text-only adapter is not implemented."
+        )
+
+
 def create_adapter(model: Any, collector: hidden_state_collector.HiddenStateCollector, model_type: str = "llama") -> ModelAdapter:
     """
     Factory function to create appropriate adapter for model.
@@ -436,7 +583,10 @@ def create_adapter(model: Any, collector: hidden_state_collector.HiddenStateColl
     adapters = {
         "llama": LlamaAdapter,
         "qwen": QwenAdapter,
-        "phi3": Phi3Adapter
+        "phi3": Phi3Adapter,
+        "mistral": MistralAdapter,
+        "smollm": SmolLMAdapter,
+        "llava": LLaVAMiniAdapter
     }
     
     if model_type.lower() not in adapters:

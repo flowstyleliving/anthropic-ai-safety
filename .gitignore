@@ -1,0 +1,21 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pkl
+.DS_Store
+.pytest_cache/
+
+# Experiment artifacts
+results/*_stratified.json
+results/scores_*.jsonl
+results/scores_*.npz
+
+# Script-local caches
+scripts/**/__pycache__/
+scripts/**/data/
+scripts/**/results/
+scripts/**/calibrated_params/
+
+# Phase transition figs (regenerable)
+figures/fig_phase_transition_*.png

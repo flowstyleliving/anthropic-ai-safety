@@ -19,6 +19,73 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
 from sklearn.metrics import roc_curve, auc
+
+
+def _infer_dataset(path: str) -> str:
+    path = path.lower()
+    if "truthfulqa" in path:
+        return "truthfulqa"
+    if "halueval" in path:
+        return "halueval"
+    return "unknown"
+
+
+def extract_metrics_row(results: Dict, label: str) -> Dict[str, str]:
+    auroc = results.get("auroc_and_prauc", {})
+    cal = results.get("calibration_metrics", {})
+    ece = cal.get("ece", {})
+    brier = cal.get("brier", {})
+    perf = results.get("performance_at_calibrated_thresholds", {})
+    joint = cal.get("joint_threshold_metrics", {})
+
+    def fmt(x):
+        return f"{x:.3f}" if isinstance(x, (int, float)) else ""
+
+    row = {
+        "model": label,
+        "dataset": _infer_dataset(results.get("test_data_path", "")),
+        "auroc_hbar": fmt(auroc.get("hbar_alone", {}).get("auroc")),
+        "auroc_pri": fmt(auroc.get("pri_alone", {}).get("auroc")),
+        "auroc_joint": fmt(auroc.get("joint", {}).get("auroc")),
+        "ece_hbar": fmt(ece.get("hbar")),
+        "ece_pri": fmt(ece.get("pri")),
+        "ece_joint": fmt(ece.get("joint")),
+        "brier_hbar": fmt(brier.get("hbar")),
+        "brier_pri": fmt(brier.get("pri")),
+        "brier_joint": fmt(brier.get("joint")),
+        "precision_hbar": fmt(perf.get("hbar_alone", {}).get("precision")),
+        "recall_hbar": fmt(perf.get("hbar_alone", {}).get("recall")),
+        "f1_hbar": fmt(perf.get("hbar_alone", {}).get("f1")),
+        "precision_pri": fmt(perf.get("pri_alone", {}).get("precision")),
+        "recall_pri": fmt(perf.get("pri_alone", {}).get("recall")),
+        "f1_pri": fmt(perf.get("pri_alone", {}).get("f1")),
+        "precision_joint": fmt(joint.get("precision")),
+        "recall_joint": fmt(joint.get("recall")),
+        "f1_joint": fmt(joint.get("f1")),
+    }
+    return row
+
+
+def plot_metrics_table(rows: List[Dict[str, str]], output_path: Path) -> None:
+    if not rows:
+        return
+    columns = list(rows[0].keys())
+    cell_text = [[row.get(col, "") for col in columns] for row in rows]
+
+    fig, ax = plt.subplots(figsize=(16, 0.5 + 0.35 * len(rows)))
+    ax.axis("off")
+    table = ax.table(
+        cellText=cell_text,
+        colLabels=columns,
+        loc="center",
+        cellLoc="center",
+    )
+    table.auto_set_font_size(False)
+    table.set_fontsize(7)
+    table.scale(1, 1.2)
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.close()
 from typing import Dict, List, Tuple, Optional
 
 # Set publication-quality style
@@ -285,6 +352,8 @@ def main():
     parser.add_argument('--qwen-calib', type=str,
                        default='./calibrated_params/qwen_2.5_7b_20260121_174428_n200.json',
                        help='Path to Qwen calibration results')
+    parser.add_argument('--results', type=str, nargs='*',
+                       help='Additional validation result JSON paths for metrics table')
     parser.add_argument('--output-dir', type=str, default='./figures',
                        help='Directory to save figures')
     args = parser.parse_args()
@@ -357,8 +426,9 @@ def main():
         y_true = np.array([s['label'] for s in samples])
         
         # Get thresholds from metadata
-        tau_hbar = llama_results.get('tau_hbar', 2.689)
-        tau_pri = llama_results.get('tau_pri', 1.092)
+        thresholds = llama_results.get("calibrated_thresholds", {})
+        tau_hbar = thresholds.get('tau_hbar', 2.689)
+        tau_pri = thresholds.get('tau_pri', 1.092)
         
         hbar_scores = np.array([s['hbar_s'] for s in samples])
         pri_scores = np.array([s['pri'] for s in samples])
@@ -380,10 +450,14 @@ def main():
     model_results = {}
     
     if llama_results:
+        auroc_block = llama_results.get("auroc_and_prauc", {})
+        auroc_hbar = auroc_block.get("hbar_alone", {}).get("auroc", 0.531)
+        auroc_pri = auroc_block.get("pri_alone", {}).get("auroc", 0.603)
+        auroc_joint = auroc_block.get("joint", {}).get("auroc", 0.600)
         model_results['Llama 3.2 3B'] = {
-            'auroc_hbar': llama_results.get('auroc_hbar', 0.531),
-            'auroc_pri': llama_results.get('auroc_pri', 0.603),
-            'auroc_joint': llama_results.get('auroc_joint', 0.600)
+            'auroc_hbar': auroc_hbar,
+            'auroc_pri': auroc_pri,
+            'auroc_joint': auroc_joint
         }
     
     if qwen_calib:
@@ -398,6 +472,27 @@ def main():
     else:
         print("⚠️  No model results available for comparison")
     
+    # Metrics table from validation results
+    if args.results:
+        rows = []
+        for path in args.results:
+            try:
+                with open(path, 'r') as f:
+                    res = json.load(f)
+                label = res.get("model_path", path).split("/")[-1]
+                rows.append(extract_metrics_row(res, label))
+            except FileNotFoundError:
+                print(f"✗ Metrics results not found: {path}")
+        if rows:
+            plot_metrics_table(rows, output_dir / "fig_metrics_table.png")
+            # Also dump CSV for easy reuse
+            csv_path = output_dir / "metrics_summary.csv"
+            with open(csv_path, "w", encoding="utf-8") as f:
+                f.write(",".join(rows[0].keys()) + "\n")
+                for row in rows:
+                    f.write(",".join(str(row.get(k, "")) for k in rows[0].keys()) + "\n")
+            print(f"✓ Saved metrics table: {output_dir / 'fig_metrics_table.png'}")
+            print(f"✓ Saved metrics CSV: {csv_path}")
     print()
     print("=" * 80)
     print(f"✓ Figures saved to: {output_dir}")

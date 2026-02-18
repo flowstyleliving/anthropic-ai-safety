@@ -28,6 +28,7 @@ hbar-experiment/
 │
 # Phase 2: Calibration & Validation (TODO)
 ├── halueval_loader.py         # HaluEval 2.0 dataset loading
+├── truthfulqa_loader.py       # TruthfulQA dataset loading
 ├── calibrate_thresholds.py    # Grid search for optimal (τ, λ)
 ├── validate.py                # Test set evaluation
 ├── multi_model_runner.py      # Run all 3 models
@@ -134,6 +135,25 @@ print(f"Halted: {result['halted']}")
 print(f"Reason: {result['halt_reason']}")
 ```
 
+### Full Calibration → Validation → Figures (HaluEval + TruthfulQA)
+
+Run the end-to-end pipeline:
+
+```bash
+python /Users/mstrkttt/Documents/anthropic-ai-safety/scripts/run_full_pipeline.py
+```
+
+Options:
+
+```bash
+python /Users/mstrkttt/Documents/anthropic-ai-safety/scripts/run_full_pipeline.py \
+  --include-large \
+  --train-samples 200 \
+  --test-samples 200 \
+  --max-tokens 20 \
+  --truthqa-update
+```
+
 ### Accessing Uncertainty Trajectory
 
 ```python
@@ -169,8 +189,24 @@ Generation stops when:
 ## Models Supported
 
 1. **Llama 3.2 3B Instruct** (4-bit) - `mlx-community/Llama-3.2-3B-Instruct-4bit`
-2. **Qwen 2.5 7B Instruct** (4-bit) - `mlx-community/Qwen2.5-7B-Instruct-4bit`
-3. **Phi-3 Mini Instruct** (4-bit) - `mlx-community/Phi-3-mini-128k-instruct-4bit`
+2. **Llama 3.1 8B Instruct** (4-bit) - `mlx-community/Llama-3.1-8B-Instruct-4bit`
+3. **Llama 3.3 70B Instruct** (4-bit) - `mlx-community/Llama-3.3-70B-Instruct-4bit`
+4. **Qwen 2.5 7B Instruct** (4-bit) - `mlx-community/Qwen2.5-7B-Instruct-4bit`
+5. **Qwen 2.5 14B Instruct** (4-bit) - `mlx-community/Qwen2.5-14B-Instruct-4bit`
+6. **Qwen 2.5 32B Instruct** (4-bit) - `mlx-community/Qwen2.5-32B-Instruct-4bit`
+7. **Phi-3 Mini Instruct** (4-bit) - `mlx-community/Phi-3-mini-128k-instruct-4bit`
+8. **Mistral 7B Instruct** (4-bit) - `mlx-community/Mistral-7B-Instruct-v0.3-4bit`
+9. **DeepSeek R1 Distill Qwen 32B** (4-bit) - `mlx-community/DeepSeek-R1-Distill-Qwen-32B-4bit`
+10. **SmolLM 360M Instruct** - `mlx-community/SmolLM-360M-Instruct`
+11. **LLaVA Phi-3 Mini** (4-bit, MLX-VLM) - `mlx-community/llava-phi-3-mini-4bit`
+
+### Embedding / Encoder Models (Non-MLX-LM)
+
+- **BERT-style MiniLM L6 v2** (embeddings) - `mlx-community/all-MiniLM-L6-v2-bf16`
+
+### Multimodal Models (MLX-VLM)
+
+- **LLaVA Phi-3 Mini** (vision-language) - `mlx-community/llava-phi-3-mini-4bit`
 
 ## Implementation Notes
 
@@ -195,9 +231,10 @@ Future optimization: Add KV cache support or adaptive monitoring frequency.
 ### Phase 2: Calibration Pipeline (In Progress)
 
 1. Implement `halueval_loader.py` - Download and sample HaluEval 2.0
-2. Implement `calibrate_thresholds.py` - Grid search for optimal (τ, λ)
-3. Implement `validate.py` - Test set evaluation with AUROC
-4. Run calibration on all 3 models
+2. Implement `truthfulqa_loader.py` - Download and sample TruthfulQA
+3. Implement `calibrate_thresholds.py` - Grid search for optimal (τ, λ)
+4. Implement `validate.py` - Test set evaluation with AUROC
+5. Run calibration on all 3 models
 
 ### Phase 3: Analysis & Visualization
 
@@ -208,6 +245,7 @@ Future optimization: Add KV cache support or adaptive monitoring frequency.
 ## References
 
 - **HaluEval 2.0**: Benchmark for hallucination detection
+- **TruthfulQA**: Benchmark for truthfulness and misinformation
 - **Semantic Uncertainty**: Kuhn et al. (2023) - Uncertainty quantification in NLP
 - **MLX Framework**: Apple's ML framework for Apple Silicon
 

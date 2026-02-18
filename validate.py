@@ -20,12 +20,13 @@ from pathlib import Path
 from typing import Dict, List, Any, Tuple, Optional
 import numpy as np
 from sklearn.metrics import (
-    roc_auc_score, 
+    roc_auc_score,
     average_precision_score,
     precision_recall_curve,
     precision_score,
     recall_score,
-    confusion_matrix
+    confusion_matrix,
+    f1_score
 )
 from tqdm import tqdm
 import mlx.core as mx
@@ -35,6 +36,8 @@ import model_adapters
 import hidden_state_collector
 import monitoring_loop
 import halueval_loader
+import truthfulqa_loader
+import config
 
 
 def load_calibrated_params(params_path: str) -> Dict[str, Any]:
@@ -57,8 +60,9 @@ def precompute_test_scores(
     tokenizer: Any,
     test_data: List[Dict[str, Any]],
     max_tokens: int = 20,
-    verbose: bool = True
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, List[Dict[str, Any]]]:
+    verbose: bool = True,
+    export_hidden_strata: bool = False
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray, List[Dict[str, Any]], Optional[Dict[str, Any]]]:
     """
     Run generation on test split and compute ℏₛ and PRI scores.
     
@@ -83,7 +87,8 @@ def precompute_test_scores(
         max_tokens=max_tokens,
         temperature=0.0,  # Greedy
         alpha_pri=0.1,
-        compute_pri=True
+        compute_pri=True,
+        export_hidden_strata=export_hidden_strata
     )
     
     hbar_s_scores = []
@@ -97,6 +102,7 @@ def precompute_test_scores(
         print(f"{'='*80}\n")
     
     import gc
+    flex_profiles = []
     for i, sample in enumerate(tqdm(test_data, desc="Generating", disable=not verbose)):
         try:
             result = monitor.generate_with_monitoring(
@@ -114,12 +120,24 @@ def precompute_test_scores(
             labels.append(label)
             
             # NEW: Save per-sample data for figure generation
-            scores_by_sample.append({
+            sample_record = {
                 "sample_id": sample.get("id", f"sample_{i:04d}"),
                 "label": int(label),
                 "hbar_s": float(hbar_s),
                 "pri": float(pri)
-            })
+            }
+            
+            if export_hidden_strata:
+                sample_record.update({
+                    "hbar_s_early": float(result.get("hbar_s_early", 0.0)),
+                    "hbar_s_middle": float(result.get("hbar_s_middle", 0.0)),
+                    "hbar_s_final": float(result.get("hbar_s_final", 0.0))
+                })
+                flex_profile = result.get("flex_profile")
+                if flex_profile is not None and len(flex_profiles) < 20:
+                    flex_profiles.append(flex_profile)
+            
+            scores_by_sample.append(sample_record)
             
             del result
             
@@ -144,7 +162,33 @@ def precompute_test_scores(
                 "error": str(e)
             })
     
-    return np.array(hbar_s_scores), np.array(pri_scores), np.array(labels), scores_by_sample
+    flex_summary = None
+    # Print flexibility profile summary if collected
+    if export_hidden_strata and flex_profiles:
+        min_len = min(len(p) for p in flex_profiles)
+        if min_len > 0:
+            trimmed = [p[:min_len] for p in flex_profiles]
+            mean_profile = np.mean(np.array(trimmed), axis=0).tolist()
+            peak_idx = int(np.argmax(mean_profile))
+            L = min_len + 1
+            print(f"Flexibility profile: {mean_profile}")
+            print(f"Peak at block {peak_idx} of {L} (relative depth: {peak_idx}/{L})")
+            flex_summary = {
+                "mean_profile": mean_profile,
+                "peak_block": int(peak_idx),
+                "num_blocks": int(L),
+                "relative_depth": float(peak_idx / L)
+            }
+        else:
+            print("Flexibility profile: [] (insufficient depth)")
+            flex_summary = {
+                "mean_profile": [],
+                "peak_block": 0,
+                "num_blocks": 0,
+                "relative_depth": 0.0
+            }
+    
+    return np.array(hbar_s_scores), np.array(pri_scores), np.array(labels), scores_by_sample, flex_summary
 
 
 def evaluate_at_calibrated_thresholds(
@@ -181,18 +225,21 @@ def evaluate_at_calibrated_thresholds(
     y_pred_hbar = (hbar_s_scores <= tau_hbar).astype(int)
     precision_hbar = precision_score(labels, y_pred_hbar, zero_division=0)
     recall_hbar = recall_score(labels, y_pred_hbar, zero_division=0)
+    f1_hbar = f1_score(labels, y_pred_hbar, zero_division=0)
     cm_hbar = confusion_matrix(labels, y_pred_hbar)
     
     # Model 2: PRI alone (higher = more hallucination)
     y_pred_pri = (pri_scores >= tau_pri).astype(int)
     precision_pri = precision_score(labels, y_pred_pri, zero_division=0)
     recall_pri = recall_score(labels, y_pred_pri, zero_division=0)
+    f1_pri = f1_score(labels, y_pred_pri, zero_division=0)
     cm_pri = confusion_matrix(labels, y_pred_pri)
     
     if verbose:
         print("ℏₛ alone:")
         print(f"  Precision: {precision_hbar:.4f}")
         print(f"  Recall:    {recall_hbar:.4f}")
+        print(f"  F1:        {f1_hbar:.4f}")
         print(f"  Confusion Matrix:")
         print(f"    {cm_hbar[0]} [TN, FP]")
         print(f"    {cm_hbar[1]} [FN, TP]")
@@ -201,6 +248,7 @@ def evaluate_at_calibrated_thresholds(
         print("PRI alone:")
         print(f"  Precision: {precision_pri:.4f}")
         print(f"  Recall:    {recall_pri:.4f}")
+        print(f"  F1:        {f1_pri:.4f}")
         print(f"  Confusion Matrix:")
         print(f"    {cm_pri[0]} [TN, FP]")
         print(f"    {cm_pri[1]} [FN, TP]")
@@ -210,14 +258,77 @@ def evaluate_at_calibrated_thresholds(
         "hbar_alone": {
             "precision": float(precision_hbar),
             "recall": float(recall_hbar),
+            "f1": float(f1_hbar),
             "confusion_matrix": cm_hbar.tolist()
         },
         "pri_alone": {
             "precision": float(precision_pri),
             "recall": float(recall_pri),
+            "f1": float(f1_pri),
             "confusion_matrix": cm_pri.tolist()
         }
     }
+
+
+def _sigmoid(x: np.ndarray) -> np.ndarray:
+    return 1.0 / (1.0 + np.exp(-x))
+
+
+def compute_probabilities(
+    hbar_s_scores: np.ndarray,
+    pri_scores: np.ndarray,
+    joint_weights: Dict[str, float],
+    hbar_prob_weights: Optional[Dict[str, float]] = None,
+    pri_prob_weights: Optional[Dict[str, float]] = None,
+) -> Dict[str, np.ndarray]:
+    """
+    Compute probabilistic outputs for calibration metrics.
+
+    Uses calibration weights when available, otherwise falls back to
+    a simple z-score + sigmoid mapping.
+    """
+    probs = {}
+
+    if hbar_prob_weights:
+        z_hbar = hbar_prob_weights["w_hbar"] * hbar_s_scores + hbar_prob_weights["intercept"]
+        probs["hbar_prob"] = _sigmoid(z_hbar)
+    else:
+        z = (hbar_s_scores - hbar_s_scores.mean()) / (hbar_s_scores.std() + 1e-8)
+        probs["hbar_prob"] = _sigmoid(z)
+
+    if pri_prob_weights:
+        z_pri = pri_prob_weights["w_pri"] * pri_scores + pri_prob_weights["intercept"]
+        probs["pri_prob"] = _sigmoid(z_pri)
+    else:
+        z = (pri_scores - pri_scores.mean()) / (pri_scores.std() + 1e-8)
+        probs["pri_prob"] = _sigmoid(z)
+
+    z_joint = (
+        joint_weights["w_hbar"] * hbar_s_scores
+        + joint_weights["w_pri"] * pri_scores
+        + joint_weights["intercept"]
+    )
+    probs["joint_prob"] = _sigmoid(z_joint)
+    return probs
+
+
+def compute_ece(y_true: np.ndarray, y_prob: np.ndarray, n_bins: int = 10) -> float:
+    """Expected Calibration Error (ECE)."""
+    bins = np.linspace(0.0, 1.0, n_bins + 1)
+    bin_ids = np.digitize(y_prob, bins) - 1
+    ece = 0.0
+    for b in range(n_bins):
+        mask = bin_ids == b
+        if not np.any(mask):
+            continue
+        acc = y_true[mask].mean()
+        conf = y_prob[mask].mean()
+        ece += (mask.sum() / len(y_true)) * abs(acc - conf)
+    return float(ece)
+
+
+def compute_brier(y_true: np.ndarray, y_prob: np.ndarray) -> float:
+    return float(np.mean((y_prob - y_true) ** 2))
 
 
 def evaluate_with_threshold_sweep(
@@ -416,7 +527,11 @@ def run_validation(
     max_tokens: int = 20,
     n_samples: Optional[int] = None,
     seed: int = 42,
-    output_path: Optional[str] = None
+    output_path: Optional[str] = None,
+    dataset: str = "halueval",
+    truthqa_update: bool = False,
+    truthqa_url: Optional[str] = None,
+    export_hidden_strata: bool = False
 ) -> Dict[str, Any]:
     """
     Main validation pipeline.
@@ -453,8 +568,24 @@ def run_validation(
     print()
     
     # Load test data
-    print(f"Loading test data from {test_data_path}...")
-    test_data = halueval_loader.load_split(test_data_path)
+    if dataset == "halueval":
+        print(f"Loading test data from {test_data_path}...")
+        test_data = halueval_loader.load_split(test_data_path)
+    elif dataset == "truthfulqa":
+        if truthqa_update:
+            url = truthqa_url or config.TRUTHFULQA_URL
+            print(f"Updating TruthfulQA from {url}...")
+            csv_path = truthfulqa_loader.download_truthfulqa(url=url)
+            all_samples = truthfulqa_loader.load_and_sample(csv_path, n_samples=1000, seed=seed)
+            train_data, test_data = truthfulqa_loader.split_train_test(all_samples, train_ratio=0.5, seed=seed)
+            output_dir = Path("./data/truthfulqa/splits")
+            output_dir.mkdir(parents=True, exist_ok=True)
+            truthfulqa_loader.save_split(train_data, str(output_dir / "train.json"))
+            truthfulqa_loader.save_split(test_data, str(output_dir / "test.json"))
+        print(f"Loading test data from {test_data_path}...")
+        test_data = truthfulqa_loader.load_split(test_data_path)
+    else:
+        raise ValueError(f"Unknown dataset: {dataset}")
     
     # Sample if requested
     if n_samples is not None and n_samples < len(test_data):
@@ -472,8 +603,8 @@ def run_validation(
     print(f"✓ Loaded: τ_hbar={tau_hbar:.4f}, τ_pri={tau_pri:.4f}")
     
     # Precompute scores
-    hbar_s_scores, pri_scores, labels, scores_by_sample = precompute_test_scores(
-        adapter, tokenizer, test_data, max_tokens, verbose=True
+    hbar_s_scores, pri_scores, labels, scores_by_sample, flex_summary = precompute_test_scores(
+        adapter, tokenizer, test_data, max_tokens, verbose=True, export_hidden_strata=export_hidden_strata
     )
     
     # Score statistics
@@ -508,6 +639,47 @@ def run_validation(
     quadrants = quadrant_analysis(
         hbar_s_scores, pri_scores, labels, tau_hbar, tau_pri, verbose=True
     )
+
+    # Probabilistic calibration metrics (ECE/Brier) and joint F1/precision/recall
+    joint_weights = calib_params.get("joint_model_weights", None)
+    if joint_weights:
+        probs = compute_probabilities(
+            hbar_s_scores=hbar_s_scores,
+            pri_scores=pri_scores,
+            joint_weights=joint_weights,
+            hbar_prob_weights=calib_params.get("hbar_prob_weights"),
+            pri_prob_weights=calib_params.get("pri_prob_weights"),
+        )
+        ece = {
+            "hbar": compute_ece(labels, probs["hbar_prob"]),
+            "pri": compute_ece(labels, probs["pri_prob"]),
+            "joint": compute_ece(labels, probs["joint_prob"]),
+        }
+        brier = {
+            "hbar": compute_brier(labels, probs["hbar_prob"]),
+            "pri": compute_brier(labels, probs["pri_prob"]),
+            "joint": compute_brier(labels, probs["joint_prob"]),
+        }
+
+        tau_joint = calib_params.get("tau_joint", 0.5)
+        y_pred_joint = (probs["joint_prob"] >= tau_joint).astype(int)
+        precision_joint = precision_score(labels, y_pred_joint, zero_division=0)
+        recall_joint = recall_score(labels, y_pred_joint, zero_division=0)
+        f1_joint = f1_score(labels, y_pred_joint, zero_division=0)
+        joint_metrics = {
+            "precision": float(precision_joint),
+            "recall": float(recall_joint),
+            "f1": float(f1_joint),
+            "tau_joint": float(tau_joint),
+        }
+        auroc_joint = roc_auc_score(labels, probs["joint_prob"])
+        pr_auc_joint = average_precision_score(labels, probs["joint_prob"])
+    else:
+        ece = {}
+        brier = {}
+        joint_metrics = {}
+        auroc_joint = None
+        pr_auc_joint = None
     
     # Compile results
     results = {
@@ -521,12 +693,23 @@ def run_validation(
             "tau_hbar": float(tau_hbar),
             "tau_pri": float(tau_pri)
         },
-        "auroc_and_prauc": auroc_prauc,
+        "calibration_metrics": {
+            "ece": ece,
+            "brier": brier,
+            "joint_threshold_metrics": joint_metrics,
+        },
+        "auroc_and_prauc": {
+            **auroc_prauc,
+            **({"joint": {"auroc": float(auroc_joint), "pr_auc": float(pr_auc_joint)}} if auroc_joint is not None else {})
+        },
         "performance_at_calibrated_thresholds": calibrated_metrics,
         "best_on_test_sweep": sweep_metrics,
         "quadrant_analysis": quadrants,
         "scores_by_sample": scores_by_sample  # NEW: Per-sample scores for figures
     }
+    
+    if export_hidden_strata and flex_summary is not None:
+        results["flexibility_profile"] = flex_summary
     
     # Save if requested
     if output_path:
@@ -546,14 +729,18 @@ def run_validation(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Validate hallucination detection on test set")
     parser.add_argument("--model", default="mlx-community/Llama-3.2-3B-Instruct-4bit", help="Model path")
-    parser.add_argument("--model-type", default="llama", choices=["llama", "qwen", "phi3"], help="Model type")
+    parser.add_argument("--model-type", default="llama", choices=["llama", "qwen", "phi3", "mistral", "smollm"], help="Model type")
     parser.add_argument("--test-data", default="./data/halueval/splits/test.json", help="Test data path")
     parser.add_argument("--calibrated-params", default="./calibrated_params/llama_3.2_3b_20260119_213225_n200.json", 
                        help="Path to calibration results JSON")
+    parser.add_argument("--dataset", default="halueval", choices=["halueval", "truthfulqa"], help="Dataset name")
+    parser.add_argument("--truthqa-update", action="store_true", help="Redownload and resplit TruthfulQA")
+    parser.add_argument("--truthqa-url", default=None, help="Optional TruthfulQA CSV URL")
     parser.add_argument("--max-tokens", type=int, default=20, help="Max generation length")
     parser.add_argument("--n-samples", type=int, default=None, help="Number of test samples (None = all)")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--output", default="./results/validation_results.json", help="Output path for results")
+    parser.add_argument("--export-hidden-strata", action="store_true", help="Export layer-stratified ℏₛ variants")
     
     args = parser.parse_args()
     
@@ -565,5 +752,9 @@ if __name__ == "__main__":
         max_tokens=args.max_tokens,
         n_samples=args.n_samples,
         seed=args.seed,
-        output_path=args.output
+        output_path=args.output,
+        dataset=args.dataset,
+        truthqa_update=args.truthqa_update,
+        truthqa_url=args.truthqa_url,
+        export_hidden_strata=args.export_hidden_strata
     )

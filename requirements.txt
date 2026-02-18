@@ -4,3 +4,9 @@ scikit-learn>=1.0.0
 matplotlib>=3.4.0
 tqdm>=4.62.0
 requests>=2.26.0
+torch>=2.0.0
+transformers>=4.35.0
+
+# Optional: MLX backend for Apple Silicon (uncomment if needed)
+# mlx>=0.5.0
+# mlx-lm>=0.5.0

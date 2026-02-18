@@ -14,11 +14,341 @@ from sklearn.metrics import roc_auc_score, precision_score, recall_score, f1_sco
 from tqdm import tqdm
 import mlx.core as mx
 from mlx_lm import load
+import joblib
 
 import model_adapters
 import hidden_state_collector
 import monitoring_loop
 import halueval_loader
+import truthfulqa_loader
+import config
+
+
+def _resolve_score_key(sample: Dict[str, Any], candidates: List[str], field_name: str) -> str:
+    for key in candidates:
+        if key in sample:
+            return key
+    raise KeyError(f"Missing {field_name} in sample. Tried keys: {candidates}")
+
+
+def load_scores_from_results(results_path: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Load per-sample ℏₛ, PRI, and labels from a results JSON file.
+    
+    Expected format: results JSON with a 'scores_by_sample' list.
+    """
+    path = Path(results_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Results file not found: {results_path}")
+    
+    with open(path, 'r') as f:
+        data = json.load(f)
+    
+    if "scores_by_sample" not in data or not isinstance(data["scores_by_sample"], list):
+        raise ValueError(f"Results file missing 'scores_by_sample': {results_path}")
+    
+    samples = data["scores_by_sample"]
+    if not samples:
+        raise ValueError(f"'scores_by_sample' is empty: {results_path}")
+    
+    hbar_key = _resolve_score_key(samples[0], ["hbar_s", "hbar_s_score", "hbar", "hbar_score"], "hbar_s")
+    pri_key = _resolve_score_key(samples[0], ["pri", "pri_score"], "pri")
+    label_key = _resolve_score_key(samples[0], ["label", "is_hallucination", "hallucination"], "label")
+    
+    hbar_s = []
+    pri = []
+    labels = []
+    for sample in samples:
+        try:
+            hbar_s.append(float(sample[hbar_key]))
+            pri.append(float(sample[pri_key]))
+            labels.append(int(sample[label_key]))
+        except Exception as e:
+            raise ValueError(f"Invalid sample in results file {results_path}: {e}")
+    
+    return np.array(hbar_s), np.array(pri), np.array(labels)
+
+
+def load_stratified_scores_from_results(results_path: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Load per-sample stratified ℏₛ variants, PRI, and labels from results JSON.
+    
+    Requires keys: hbar_s_early, hbar_s_middle, hbar_s_final, pri, label
+    """
+    path = Path(results_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Results file not found: {results_path}")
+    
+    with open(path, 'r') as f:
+        data = json.load(f)
+    
+    if "scores_by_sample" not in data or not isinstance(data["scores_by_sample"], list):
+        raise ValueError(f"Results file missing 'scores_by_sample': {results_path}")
+    
+    samples = data["scores_by_sample"]
+    if not samples:
+        raise ValueError(f"'scores_by_sample' is empty: {results_path}")
+    
+    required = ["hbar_s_early", "hbar_s_middle", "hbar_s_final"]
+    for key in required:
+        if key not in samples[0]:
+            raise KeyError(
+                f"Missing {key} in results. Re-run validation with --export-hidden-strata to add stratified scores."
+            )
+    
+    pri_key = _resolve_score_key(samples[0], ["pri", "pri_score"], "pri")
+    label_key = _resolve_score_key(samples[0], ["label", "is_hallucination", "hallucination"], "label")
+    
+    hbar_early = []
+    hbar_middle = []
+    hbar_final = []
+    pri = []
+    labels = []
+    
+    for sample in samples:
+        hbar_early.append(float(sample["hbar_s_early"]))
+        hbar_middle.append(float(sample["hbar_s_middle"]))
+        hbar_final.append(float(sample["hbar_s_final"]))
+        pri.append(float(sample[pri_key]))
+        labels.append(int(sample[label_key]))
+    
+    return (
+        np.array(hbar_early),
+        np.array(hbar_middle),
+        np.array(hbar_final),
+        np.array(pri),
+        np.array(labels)
+    )
+
+
+def run_logistic_regression_from_results(
+    results_path: str,
+    model_name: str,
+    output_dir: str,
+    seed: int = 42,
+    test_size: float = 0.2
+) -> None:
+    """
+    Train logistic regression models on saved ℏₛ/PRI scores.
+    
+    Trains two variants:
+    - Additive: [hbar_s, pri]
+    - Interaction: [hbar_s, pri, hbar_s * pri]
+    
+    Saves fitted models to calibrated_params/logistic_regression_<model_name>.pkl
+    """
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.model_selection import train_test_split
+    
+    hbar_s, pri, labels = load_scores_from_results(results_path)
+    
+    # Split first, then z-score using TRAIN stats to avoid leakage
+    hbar_train, hbar_test, pri_train, pri_test, y_train, y_test = train_test_split(
+        hbar_s, pri, labels, test_size=test_size, random_state=seed, stratify=labels
+    )
+    
+    hbar_mean = float(np.mean(hbar_train))
+    hbar_std = float(np.std(hbar_train)) or 1.0
+    pri_mean = float(np.mean(pri_train))
+    pri_std = float(np.std(pri_train)) or 1.0
+    
+    hbar_train_z = (hbar_train - hbar_mean) / hbar_std
+    hbar_test_z = (hbar_test - hbar_mean) / hbar_std
+    pri_train_z = (pri_train - pri_mean) / pri_std
+    pri_test_z = (pri_test - pri_mean) / pri_std
+    
+    X_add_train = np.column_stack([hbar_train_z, pri_train_z])
+    X_add_test = np.column_stack([hbar_test_z, pri_test_z])
+    X_int_train = np.column_stack([hbar_train_z, pri_train_z, hbar_train_z * pri_train_z])
+    X_int_test = np.column_stack([hbar_test_z, pri_test_z, hbar_test_z * pri_test_z])
+    
+    clf_add = LogisticRegression(class_weight="balanced", max_iter=1000, random_state=seed)
+    clf_int = LogisticRegression(class_weight="balanced", max_iter=1000, random_state=seed)
+    
+    clf_add.fit(X_add_train, y_train)
+    clf_int.fit(X_int_train, y_train)
+    
+    add_probs = clf_add.predict_proba(X_add_test)[:, 1]
+    int_probs = clf_int.predict_proba(X_int_test)[:, 1]
+    
+    auroc_add = roc_auc_score(y_test, add_probs)
+    auroc_int = roc_auc_score(y_test, int_probs)
+    auroc_pri = roc_auc_score(y_test, pri_test)
+    
+    print(f"=== Logistic Regression Results ({model_name}, n={len(labels)}) ===")
+    print(f"Z-score params (train split): hbar_s mean={hbar_mean:.4f}, std={hbar_std:.4f} | pri mean={pri_mean:.4f}, std={pri_std:.4f}")
+    print(f"Features: [hbar_s, pri]              AUROC: {auroc_add:.3f}")
+    print(f"Features: [hbar_s, pri, hbar_s*pri]  AUROC: {auroc_int:.3f}")
+    print(f"PRI-only baseline:                   AUROC: {auroc_pri:.3f}")
+    print()
+    print("Coefficients (with interaction):")
+    print(f"  β0 (intercept):   {clf_int.intercept_[0]: .4f}")
+    print(f"  β1 (hbar_s):      {clf_int.coef_[0][0]: .4f}")
+    print(f"  β2 (pri):         {clf_int.coef_[0][1]: .4f}")
+    print(f"  β3 (hbar_s*pri):  {clf_int.coef_[0][2]: .4f}")
+    print()
+    print("Expected signs: β1 < 0, β2 > 0, β3 < 0")
+    print()
+    
+    output_path = Path(output_dir) / f"logistic_regression_{model_name}.pkl"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    joblib.dump(
+        {
+            "model_name": model_name,
+            "results_path": str(results_path),
+            "feature_sets": {
+                "additive": ["hbar_s", "pri"],
+                "interaction": ["hbar_s", "pri", "hbar_s*pri"]
+            },
+            "zscore": {
+                "hbar_mean": hbar_mean,
+                "hbar_std": hbar_std,
+                "pri_mean": pri_mean,
+                "pri_std": pri_std
+            },
+            "models": {
+                "additive": clf_add,
+                "interaction": clf_int
+            },
+            "split": {
+                "seed": seed,
+                "test_size": test_size,
+                "n_total": int(len(labels)),
+                "n_test": int(len(y_test))
+            },
+            "metrics": {
+                "auroc_additive": float(auroc_add),
+                "auroc_interaction": float(auroc_int),
+                "auroc_pri_only": float(auroc_pri)
+            }
+        },
+        output_path
+    )
+    print(f"Saved logistic regression model bundle to {output_path}")
+
+
+def run_layer_stratified_logistic_from_results(
+    results_path: str,
+    model_name: str,
+    output_dir: str,
+    seed: int = 42,
+    test_size: float = 0.2
+) -> None:
+    """
+    Run layer-stratified logistic regression experiments on saved results JSON.
+    """
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.model_selection import train_test_split
+    
+    # Load results for optional flexibility profile summary
+    flex_summary = None
+    try:
+        with open(results_path, "r") as f:
+            data = json.load(f)
+            flex_summary = data.get("flexibility_profile")
+    except Exception:
+        flex_summary = None
+    
+    hbar_early, hbar_middle, hbar_final, pri, labels = load_stratified_scores_from_results(results_path)
+    
+    (hbe_tr, hbe_te,
+     hbm_tr, hbm_te,
+     hbf_tr, hbf_te,
+     pri_tr, pri_te,
+     y_tr, y_te) = train_test_split(
+        hbar_early, hbar_middle, hbar_final, pri, labels,
+        test_size=test_size, random_state=seed, stratify=labels
+    )
+    
+    def zscore(train, test):
+        mean = float(np.mean(train))
+        std = float(np.std(train)) or 1.0
+        return (train - mean) / std, (test - mean) / std, mean, std
+    
+    hbe_tr_z, hbe_te_z, hbe_mean, hbe_std = zscore(hbe_tr, hbe_te)
+    hbm_tr_z, hbm_te_z, hbm_mean, hbm_std = zscore(hbm_tr, hbm_te)
+    hbf_tr_z, hbf_te_z, hbf_mean, hbf_std = zscore(hbf_tr, hbf_te)
+    pri_tr_z, pri_te_z, pri_mean, pri_std = zscore(pri_tr, pri_te)
+    
+    feature_sets = [
+        ("[hbar_s_middle, pri]", np.column_stack([hbm_tr_z, pri_tr_z]), np.column_stack([hbm_te_z, pri_te_z]),
+         ["hbar_s_middle", "pri"]),
+        ("[hbar_s_final, pri]", np.column_stack([hbf_tr_z, pri_tr_z]), np.column_stack([hbf_te_z, pri_te_z]),
+         ["hbar_s_final", "pri"]),
+        ("[hbar_s_early, pri]", np.column_stack([hbe_tr_z, pri_tr_z]), np.column_stack([hbe_te_z, pri_te_z]),
+         ["hbar_s_early", "pri"]),
+        ("[hbar_s_middle, hbar_s_final, pri]",
+         np.column_stack([hbm_tr_z, hbf_tr_z, pri_tr_z]),
+         np.column_stack([hbm_te_z, hbf_te_z, pri_te_z]),
+         ["hbar_s_middle", "hbar_s_final", "pri"]),
+        ("[hbar_s_middle, hbar_s_final, pri, hbar_s_middle*pri]",
+         np.column_stack([hbm_tr_z, hbf_tr_z, pri_tr_z, hbm_tr_z * pri_tr_z]),
+         np.column_stack([hbm_te_z, hbf_te_z, pri_te_z, hbm_te_z * pri_te_z]),
+         ["hbar_s_middle", "hbar_s_final", "pri", "hbar_s_middle*pri"])
+    ]
+    
+    pri_only_auc = roc_auc_score(y_te, pri_te)
+    
+    print(f"=== Layer-Stratified Experiment: {model_name} (n={len(labels)}) ===")
+    if flex_summary:
+        print()
+        print(f"Flexibility profile peak: block {flex_summary.get('peak_block')} of {flex_summary.get('num_blocks')} "
+              f"(relative: {flex_summary.get('relative_depth'):.3f})")
+    print()
+    
+    best_auc = None
+    for name, X_tr, X_te, cols in feature_sets:
+        clf = LogisticRegression(class_weight="balanced", max_iter=1000, random_state=seed)
+        clf.fit(X_tr, y_tr)
+        probs = clf.predict_proba(X_te)[:, 1]
+        auroc = roc_auc_score(y_te, probs)
+        
+        coef_map = {col: float(val) for col, val in zip(cols, clf.coef_[0])}
+        
+        expected_positive = []
+        if "hbar_s_middle" in cols:
+            expected_positive.append(("hbar_s_middle", coef_map["hbar_s_middle"]))
+        if "pri" in cols:
+            expected_positive.append(("pri", coef_map["pri"]))
+        theory_consistent = all(val > 0 for _, val in expected_positive) if expected_positive else False
+        
+        print(f"Feature set: {name}")
+        print(f"  AUROC:            {auroc:.3f}  (PRI-only baseline: {pri_only_auc:.3f})")
+        for col in cols:
+            print(f"  β({col}): {coef_map[col]: .3f}")
+        print(f"  Theory consistent: {'YES' if theory_consistent else 'NO'}")
+        print()
+        
+        if best_auc is None or auroc > best_auc:
+            best_auc = auroc
+    
+    print("=== Hypothesis Verdict ===")
+    print(f"Coefficient stability resolved by stratification: {'YES' if best_auc and best_auc > pri_only_auc else 'NO'}")
+    print(f"Best AUROC vs PRI-only: {0.0 if best_auc is None else (best_auc - pri_only_auc):+.3f}")
+    print()
+    
+    output_path = Path(output_dir) / f"logistic_regression_layer_stratified_{model_name}.pkl"
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    joblib.dump(
+        {
+            "model_name": model_name,
+            "results_path": str(results_path),
+            "zscore": {
+                "hbar_early": {"mean": hbe_mean, "std": hbe_std},
+                "hbar_middle": {"mean": hbm_mean, "std": hbm_std},
+                "hbar_final": {"mean": hbf_mean, "std": hbf_std},
+                "pri": {"mean": pri_mean, "std": pri_std}
+            },
+            "split": {
+                "seed": seed,
+                "test_size": test_size,
+                "n_total": int(len(labels)),
+                "n_test": int(len(y_te))
+            }
+        },
+        output_path
+    )
+    print(f"Saved layer-stratified logistic bundle to {output_path}")
 
 
 class ThresholdCalibrator:
@@ -198,7 +528,7 @@ class ThresholdCalibrator:
         Returns:
             Dict with best model and quadrant analysis
         """
-        from sklearn.linear_model import LogisticRegressionCV
+        from sklearn.linear_model import LogisticRegressionCV, LogisticRegression
         from sklearn.metrics import precision_recall_curve, average_precision_score
         from sklearn.model_selection import StratifiedKFold
         
@@ -278,12 +608,15 @@ class ThresholdCalibrator:
         joint_probs = clf.predict_proba(X)[:, 1]
         auroc_joint = roc_auc_score(labels, joint_probs)
         
-        precision_joint, recall_joint, _ = precision_recall_curve(labels, joint_probs)
+        precision_joint, recall_joint, thresholds_joint = precision_recall_curve(labels, joint_probs)
         valid_idx = recall_joint >= 0.9
         if valid_idx.any():
             best_prec_joint = precision_joint[valid_idx].max()
+            best_idx = np.where((recall_joint >= 0.9) & (precision_joint == best_prec_joint))[0][0]
+            tau_joint = float(thresholds_joint[best_idx]) if best_idx < len(thresholds_joint) else 0.5
         else:
             best_prec_joint = 0.0
+            tau_joint = 0.5
         
         if verbose:
             print(f"  AUROC (CV): {auroc_joint:.4f}")
@@ -337,16 +670,31 @@ class ThresholdCalibrator:
                 print(f"  Hallucination rate: {precision_q:.3f}")
                 print()
         
+        # Probabilistic calibration for single-feature models (for ECE/Brier)
+        clf_hbar = LogisticRegression(max_iter=1000)
+        clf_hbar.fit(hbar_s_scores.reshape(-1, 1), labels)
+        clf_pri = LogisticRegression(max_iter=1000)
+        clf_pri.fit(pri_scores.reshape(-1, 1), labels)
+
         return {
             'auroc_hbar': float(auroc_hbar),
             'auroc_pri': float(auroc_pri),
             'auroc_joint': float(auroc_joint),
             'tau_hbar': float(tau_hbar),
             'tau_pri': float(tau_pri),
+            'tau_joint': float(tau_joint),
             'joint_model_weights': {
                 'w_hbar': float(clf.coef_[0][0]),
                 'w_pri': float(clf.coef_[0][1]),
                 'intercept': float(clf.intercept_[0])
+            },
+            'hbar_prob_weights': {
+                'w_hbar': float(clf_hbar.coef_[0][0]),
+                'intercept': float(clf_hbar.intercept_[0])
+            },
+            'pri_prob_weights': {
+                'w_pri': float(clf_pri.coef_[0][0]),
+                'intercept': float(clf_pri.intercept_[0])
             },
             'best_precision_hbar': float(best_prec_hbar),
             'best_precision_pri': float(best_prec_pri),
@@ -603,8 +951,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Calibrate hallucination detection thresholds")
     parser.add_argument("--model", default="mlx-community/Llama-3.2-3B-Instruct-4bit", help="Model path")
     parser.add_argument("--model-name", default="llama_3.2_3b", help="Model name for saving")
-    parser.add_argument("--model-type", default="llama", choices=["llama", "qwen", "phi3"], help="Model type")
+    parser.add_argument("--model-type", default="llama", choices=["llama", "qwen", "phi3", "mistral", "smollm"], help="Model type")
     parser.add_argument("--train-data", default="./data/halueval/splits/train.json", help="Training data path")
+    parser.add_argument("--dataset", default="halueval", choices=["halueval", "truthfulqa"], help="Dataset name")
+    parser.add_argument("--truthqa-update", action="store_true", help="Redownload and resplit TruthfulQA")
+    parser.add_argument("--truthqa-url", default=None, help="Optional TruthfulQA CSV URL")
     parser.add_argument("--tau-start", type=float, default=None, help="Optional: Tau start value (if None, uses data-driven quantiles)")
     parser.add_argument("--tau-stop", type=float, default=None, help="Optional: Tau stop value")
     parser.add_argument("--tau-step", type=float, default=0.1, help="Tau step size (only used if tau-start/stop specified)")
@@ -612,8 +963,36 @@ if __name__ == "__main__":
     parser.add_argument("--n-samples", type=int, default=200, help="Number of training samples")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     parser.add_argument("--output-dir", default="./calibrated_params", help="Output directory")
+    parser.add_argument("--logistic", action="store_true", help="Run logistic regression on saved results JSON and exit")
+    parser.add_argument("--results-file", default=None, help="Results JSON file with scores_by_sample")
+    parser.add_argument("--logistic-test-size", type=float, default=0.2, help="Test split fraction for logistic regression")
+    parser.add_argument("--layer-stratified", action="store_true", help="Run layer-stratified logistic regression and exit")
     
     args = parser.parse_args()
+    
+    if args.layer_stratified:
+        if not args.results_file:
+            raise ValueError("--results-file is required when --layer-stratified is set")
+        run_layer_stratified_logistic_from_results(
+            results_path=args.results_file,
+            model_name=args.model_name,
+            output_dir=args.output_dir,
+            seed=args.seed,
+            test_size=args.logistic_test_size
+        )
+        raise SystemExit(0)
+    
+    if args.logistic:
+        if not args.results_file:
+            raise ValueError("--results-file is required when --logistic is set")
+        run_logistic_regression_from_results(
+            results_path=args.results_file,
+            model_name=args.model_name,
+            output_dir=args.output_dir,
+            seed=args.seed,
+            test_size=args.logistic_test_size
+        )
+        raise SystemExit(0)
     
     print("=" * 80)
     print("Threshold Calibration")
@@ -634,8 +1013,24 @@ if __name__ == "__main__":
     print()
     
     # Load training data
-    print(f"Loading training data from {args.train_data}...")
-    train_data = halueval_loader.load_split(args.train_data)
+    if args.dataset == "halueval":
+        print(f"Loading training data from {args.train_data}...")
+        train_data = halueval_loader.load_split(args.train_data)
+    elif args.dataset == "truthfulqa":
+        if args.truthqa_update:
+            url = args.truthqa_url or config.TRUTHFULQA_URL
+            print(f"Updating TruthfulQA from {url}...")
+            csv_path = truthfulqa_loader.download_truthfulqa(url=url)
+            all_samples = truthfulqa_loader.load_and_sample(csv_path, n_samples=1000, seed=args.seed)
+            train_data, test_data = truthfulqa_loader.split_train_test(all_samples, train_ratio=0.5, seed=args.seed)
+            output_dir = Path("./data/truthfulqa/splits")
+            output_dir.mkdir(parents=True, exist_ok=True)
+            truthfulqa_loader.save_split(train_data, str(output_dir / "train.json"))
+            truthfulqa_loader.save_split(test_data, str(output_dir / "test.json"))
+        print(f"Loading training data from {args.train_data}...")
+        train_data = truthfulqa_loader.load_split(args.train_data)
+    else:
+        raise ValueError(f"Unknown dataset: {args.dataset}")
     
     # Set random seed for reproducibility
     import random
